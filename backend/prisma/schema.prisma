@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String   @default("123456") // Mặc định cho nhanh
+  fullName  String?
+  role      String   @default("USER")
+  orders    Order[]
+  reviews   Review[]
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String?     @db.Text // AI Chatbot dùng cái này
+  price       Float
+  costPrice   Float
+  stock       Int         @default(100)
+  image       String?     @db.Text
+  category    String
+  orderItems  OrderItem[]
+  reviews     Review[]
+  createdAt   DateTime    @default(now())
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  user        User        @relation(fields: [userId], references: [id])
+  totalAmount Float
+  status      String      @default("COMPLETED")
+  items       OrderItem[]
+  createdAt   DateTime    @default(now()) // AI Dự báo dùng cái này
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  content   String   @db.Text // AI Phân tích cảm xúc dùng cái này
+  rating    Int      @default(5)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+}
