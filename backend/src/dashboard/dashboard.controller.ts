@@ -9,4 +9,9 @@ export class DashboardController {
   getRevenue() {
     return this.dashboardService.getRevenueStats();
   }
+
+  @Get('customer-segments')
+  getCustomerSegments() {
+    return this.dashboardService.getCustomerSegments();
+  }
 }

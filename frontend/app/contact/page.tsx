@@ -38,7 +38,7 @@ export default function ContactPage() {
         setIsLoading(true);
 
         try {
-            // 2. Gọi API sang Backend (NestJS đang chạy ở port 3000)
+            // 2. Gọi API sang Backend
             const response = await axios.post('http://localhost:3050/chat', {
                 message: userMsg.content,
             });

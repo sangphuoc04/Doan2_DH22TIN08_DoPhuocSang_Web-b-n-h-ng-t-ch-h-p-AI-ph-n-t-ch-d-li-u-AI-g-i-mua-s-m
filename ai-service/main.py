@@ -8,6 +8,11 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from datetime import datetime
 
+# === [BẮT ĐẦU THÊM MỚI 1] IMPORT THƯ VIỆN CHO FEATURE 3 (K-MEANS) ===
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+# === [KẾT THÚC THÊM MỚI 1] ===
+
 # --- CẤU HÌNH ---
 # DÁN API KEY CỦA BẠN VÀO ĐÂY NHÉ
 GOOGLE_API_KEY = "AIzaSyA4qrOUTmpRSYHzriptt23EszxEBq4pOrE"  
@@ -133,3 +138,85 @@ def predict_revenue():
     except Exception as e:
         print(f"LỖI: {e}")
         return {"error": str(e)}
+
+# === [BẮT ĐẦU THÊM MỚI 2] API 3: PHÂN KHÚC KHÁCH HÀNG BẰNG K-MEANS ===
+@app.get("/customer-segments")
+def customer_segments():
+    try:
+        conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Query SQL lấy và gom nhóm dữ liệu RFM cơ bản từ bảng Order
+        cursor.execute("""
+            SELECT 
+                userId, 
+                COUNT(id) as Frequency, 
+                SUM(totalAmount) as Monetary, 
+                MAX(createdAt) as LastPurchaseDate
+            FROM `Order` 
+            WHERE status = 'COMPLETED'
+            GROUP BY userId
+        """)
+        raw_data = cursor.fetchall()
+        conn.close()
+
+        if not raw_data:
+            return {"status": "error", "message": "Chưa đủ dữ liệu đơn hàng để phân tích", "chart_data": [], "details": []}
+
+        df = pd.DataFrame(raw_data)
+        df['LastPurchaseDate'] = pd.to_datetime(df['LastPurchaseDate'])
+        
+        # 2. Tính toán Recency (Khoảng cách từ ngày mua cuối đến hiện tại)
+        snapshot_date = df['LastPurchaseDate'].max() + pd.Timedelta(days=1)
+        df['Recency'] = (snapshot_date - df['LastPurchaseDate']).dt.days
+
+        # Ép kiểu Decimal từ MySQL sang float cho dễ tính toán thuật toán
+        df['Monetary'] = df['Monetary'].astype(float)
+
+        # 3. Chuẩn hóa dữ liệu (Feature Scaling)
+        scaler = StandardScaler()
+        rfm_scaled = scaler.fit_transform(df[['Recency', 'Frequency', 'Monetary']])
+
+        # 4. Áp dụng K-Means Clustering
+        # Cố gắng chia 4 nhóm. Nếu tổng số lượng khách hàng < 4 thì chia bằng đúng số khách hàng hiện có
+        n_clusters = 4 if len(df) >= 4 else len(df)
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+        kmeans.fit(rfm_scaled)
+        df['Cluster'] = kmeans.labels_
+
+        # 5. Gán nhãn cho từng nhóm (Auto Labeling)
+        # Tính trung bình số tiền chi tiêu của từng cụm để biết cụm nào "giàu" nhất
+        cluster_avg = df.groupby('Cluster').agg({'Monetary': 'mean'}).reset_index()
+        cluster_avg = cluster_avg.sort_values(by='Monetary', ascending=False)
+        
+        sorted_clusters = cluster_avg['Cluster'].tolist()
+        label_map = {}
+        
+        if len(sorted_clusters) >= 4:
+            label_map[sorted_clusters[0]] = "VIP (Chi tiêu cao)"
+            label_map[sorted_clusters[1]] = "Khách hàng Tiềm năng"
+            label_map[sorted_clusters[2]] = "Khách hàng Thường xuyên"
+            label_map[sorted_clusters[3]] = "Nguy cơ rời bỏ"
+        else:
+            # Fallback nếu số user quá ít
+            for idx, c in enumerate(sorted_clusters):
+                label_map[c] = f"Nhóm {idx + 1}"
+
+        df['Label'] = df['Cluster'].map(label_map)
+
+        # 6. Đếm số lượng để trả về cho Recharts (Pie Chart) vẽ
+        segment_summary = df['Label'].value_counts().reset_index()
+        segment_summary.columns = ['name', 'value'] 
+
+        print(">>> DEBUG AI PHÂN CỤM KHÁCH HÀNG:", segment_summary.to_dict(orient='records'))
+
+        return {
+            "status": "success",
+            "chart_data": segment_summary.to_dict(orient='records'),
+            "details": df[['userId', 'Label', 'Recency', 'Frequency', 'Monetary']].to_dict(orient='records')
+        }
+
+    except Exception as e:
+        print(f"LỖI PHÂN KHÚC: {e}")
+        return {"status": "error", "error": str(e)}
+# === [KẾT THÚC THÊM MỚI 2] ===
