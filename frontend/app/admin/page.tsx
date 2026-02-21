@@ -13,7 +13,7 @@ import {
 import axios from 'axios';
 
 // 1. COMPONENT BIỂU ĐỒ TRÒN
-import CustomerSegmentationChart from '../admin/components/admin/CustomerSegmentationChart';
+import CustomerSegmentationChart from './CustomerSegmentationChart/page';
 
 export default function AdminDashboard() {
     const [data, setData] = useState([]);

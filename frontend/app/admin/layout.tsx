@@ -16,9 +16,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const menuItems = [
         { name: 'Dashboard (Dự báo)', href: '/admin', icon: LayoutDashboard },
         { name: 'Quản lý Sản phẩm', href: '/admin/products', icon: Package },
-        { name: 'Phân khúc Khách (AI)', href: '/admin/customers', icon: Users }, // Feature 3
-        { name: 'Phân tích Đánh giá (AI)', href: '/admin/reviews', icon: MessageSquare }, // Feature 4
-        { name: 'Visual Search Data', href: '/admin/visual-data', icon: ImageIcon }, // Feature 5 (Data)
+        { name: 'Phân tích Đánh giá (AI)', href: '/admin/reviews', icon: MessageSquare },
+        { name: 'Visual Search Data', href: '/admin/visual-data', icon: ImageIcon },
     ];
 
     return (

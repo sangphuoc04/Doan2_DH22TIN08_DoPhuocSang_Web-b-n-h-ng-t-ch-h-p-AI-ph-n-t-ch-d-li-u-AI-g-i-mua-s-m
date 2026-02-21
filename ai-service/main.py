@@ -7,15 +7,20 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from datetime import datetime
+import json
 
 # === [BẮT ĐẦU THÊM MỚI 1] IMPORT THƯ VIỆN CHO FEATURE 3 (K-MEANS) ===
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 # === [KẾT THÚC THÊM MỚI 1] ===
 
-# --- CẤU HÌNH ---
-# DÁN API KEY CỦA BẠN VÀO ĐÂY NHÉ
-GOOGLE_API_KEY = "AIzaSyA4qrOUTmpRSYHzriptt23EszxEBq4pOrE"  
+import os
+from dotenv import load_dotenv
+load_dotenv() 
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+if not GOOGLE_API_KEY:
+    raise ValueError("LỖI: Chưa tìm thấy GOOGLE_API_KEY trong file .env")
 
 app = FastAPI()
 
@@ -121,8 +126,6 @@ def predict_revenue():
         for item in raw_top_products:
             # Ép kiểu an toàn sang số nguyên để Next.js đọc được
             top_products.append({"name": item['name'], "total_sold": int(item['total_sold'])})
-            
-        print(">>> DEBUG AI ĐÃ TÌM THẤY TOP 3:", top_products)
         conn.close()
 
         return {
@@ -208,8 +211,6 @@ def customer_segments():
         segment_summary = df['Label'].value_counts().reset_index()
         segment_summary.columns = ['name', 'value'] 
 
-        print(">>> DEBUG AI PHÂN CỤM KHÁCH HÀNG:", segment_summary.to_dict(orient='records'))
-
         return {
             "status": "success",
             "chart_data": segment_summary.to_dict(orient='records'),
@@ -220,3 +221,192 @@ def customer_segments():
         print(f"LỖI PHÂN KHÚC: {e}")
         return {"status": "error", "error": str(e)}
 # === [KẾT THÚC THÊM MỚI 2] ===
+# === [BẮT ĐẦU THÊM MỚI 3] API 4: PHÂN TÍCH CẢM XÚC ĐÁNH GIÁ (SENTIMENT ANALYSIS) ===
+@app.get("/analyze-reviews")
+def analyze_reviews():
+    try:
+        conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT r.id, r.content, r.rating, p.name as productName
+            FROM Review r
+            JOIN Product p ON r.productId = p.id
+            ORDER BY r.id DESC LIMIT 50
+        """)
+        reviews = cursor.fetchall()
+        conn.close()
+
+        if not reviews:
+            return {"status": "success", "stats": {"positive": 0, "negative": 0, "neutral": 0}, "warnings": [], "details": []}
+
+        review_texts = [{"id": r["id"], "content": r["content"]} for r in reviews]
+        
+        prompt_text = f"""
+        Bạn là một AI phân tích cảm xúc (Sentiment Analysis) chuyên nghiệp.
+        Hãy đọc danh sách các bình luận sau và phân loại thành đúng 1 trong 3 nhãn: 'Tích cực', 'Tiêu cực', hoặc 'Trung lập'.
+        CHỈ TRẢ VỀ MẢNG JSON THUẦN TÚY (Không dùng markdown, không giải thích gì thêm), định dạng mẫu:
+        [ {{"id": 1, "sentiment": "Tích cực"}}, {{"id": 2, "sentiment": "Tiêu cực"}} ]
+        
+        Dữ liệu đầu vào:
+        {json.dumps(review_texts, ensure_ascii=False)}
+        """
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
+        payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
+        
+        # Gọi Gemini API
+        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+        result = response.json()
+        
+        # Check lỗi từ Gemini (Quota, Key, Network...)
+        if "candidates" not in result:
+            print(">>> LỖI TỪ GEMINI API:", result)
+            error_msg = result.get('error', {}).get('message', 'Lỗi không xác định từ Gemini')
+            return {"status": "error", "error": f"Gemini API Error: {error_msg}"}
+
+        # Bóc tách và parse JSON an toàn
+        raw_text = result['candidates'][0]['content']['parts'][0]['text']
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        try:
+            ai_results = json.loads(raw_text) # ĐÂY LÀ DÒNG BẠN BỊ THIẾU
+        except json.JSONDecodeError:
+            print(">>> LỖI PARSE JSON TỪ GEMINI:", raw_text)
+            ai_results = [] # Fallback an toàn nếu AI trả lời lộn xộn
+
+        # Map kết quả và thống kê
+        sentiment_map = {item['id']: item['sentiment'] for item in ai_results}
+        
+        stats = {"Tích cực": 0, "Tiêu cực": 0, "Trung lập": 0}
+        product_negative_count = {}
+        
+        for r in reviews:
+            # Nếu AI không phân tích được review này, lấy rating làm mốc dự phòng
+            fallback_sentiment = "Tích cực" if r["rating"] >= 4 else ("Tiêu cực" if r["rating"] <= 2 else "Trung lập")
+            sentiment = sentiment_map.get(r["id"], fallback_sentiment)
+            
+            if "Tích" in sentiment: sentiment = "Tích cực"
+            elif "Tiêu" in sentiment: sentiment = "Tiêu cực"
+            else: sentiment = "Trung lập"
+
+            r["sentiment"] = sentiment
+            stats[sentiment] += 1
+                
+            if sentiment == "Tiêu cực":
+                prod_name = r["productName"]
+                product_negative_count[prod_name] = product_negative_count.get(prod_name, 0) + 1
+
+        total = len(reviews)
+        percentages = {
+            "positive": round((stats["Tích cực"] / total) * 100, 1),
+            "negative": round((stats["Tiêu cực"] / total) * 100, 1),
+            "neutral": round((stats["Trung lập"] / total) * 100, 1)
+        }
+
+        warnings = [
+            f"Sản phẩm '{name}' đang bị phàn nàn nhiều ({count} đánh giá tiêu cực)! Cần kiểm tra lại chất lượng." 
+            for name, count in product_negative_count.items() if count >= 2
+        ]
+
+        return {
+            "status": "success",
+            "stats": percentages,
+            "warnings": warnings,
+            "details": reviews
+        }
+
+    except Exception as e:
+        print(f"LỖI PHÂN TÍCH CẢM XÚC: {e}")
+        return {"status": "error", "error": str(e)}
+# === [KẾT THÚC THÊM MỚI 3] ===
+
+# === [BẮT ĐẦU THÊM MỚI 4] API 5: VISUAL SEARCH (TÌM KIẾM BẰNG HÌNH ẢNH) ===
+
+class ImageSearchRequest(BaseModel):
+    image_base64: str
+
+@app.post("/visual-search")
+def visual_search(req: ImageSearchRequest):
+    print(">>> [PYTHON] Đã nhận request! Đang kết nối Database...")
+    try:
+        # 1. Xử lý chuỗi Base64 (Cắt bỏ phần header data:image/jpeg;base64, nếu có)
+        base64_data = req.image_base64
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+
+        # 2. Lấy danh sách sản phẩm từ DB làm "từ điển" cho AI tìm kiếm
+        conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, name, category, price, image FROM Product")
+        products = cursor.fetchall()
+        conn.close()
+
+        if not products:
+            return {"status": "error", "message": "Không có sản phẩm trong DB", "data": []}
+
+        # Rút gọn data gửi cho AI để tiết kiệm token
+        prod_list = [{"id": p["id"], "name": p["name"], "category": p["category"]} for p in products]
+
+        # 3. Prompt thông minh ép AI chỉ trả về JSON chứa ID
+        prompt_text = f"""
+        Bạn là chuyên gia thời trang AI. Khách hàng vừa tải lên một bức ảnh.
+        Hãy quan sát bức ảnh này và tìm ra TỐI ĐA 4 sản phẩm CÓ KIỂU DÁNG HOẶC MÀU SẮC GIỐNG NHẤT từ danh sách cửa hàng sau:
+        {json.dumps(prod_list, ensure_ascii=False)}
+
+        CHỈ TRẢ VỀ MẢNG JSON chứa ID của các sản phẩm bạn chọn (ví dụ: [1, 5, 12]). 
+        Không giải thích, không dùng markdown.
+        """
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
+        
+        # Payload gửi dạng Multimodal (Text + Image)
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt_text},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg", # Gemini tự nhận diện định dạng thật
+                                "data": base64_data
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+
+        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload, timeout=25)
+        
+        print(">>> [PYTHON] Gemini đã trả lời xong! Đang phân tích kết quả...")
+        result = response.json()
+
+        # 4. Gọi Gemini API
+        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+        result = response.json()
+
+        if "candidates" not in result:
+            print(">>> LỖI GEMINI VISUAL SEARCH:", result)
+            return {"status": "error", "message": "Không thể phân tích ảnh lúc này", "data": []}
+
+        raw_text = result['candidates'][0]['content']['parts'][0]['text']
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
+        try:
+            matched_ids = json.loads(raw_text)
+        except json.JSONDecodeError:
+            matched_ids = []
+
+        # 5. Map lại data chi tiết để trả về Frontend
+        matched_products = [p for p in products if p["id"] in matched_ids]
+
+        return {
+            "status": "success",
+            "data": matched_products
+        }
+
+    except Exception as e:
+        print(f"LỖI VISUAL SEARCH: {e}")
+        return {"status": "error", "message": str(e), "data": []}
+# === [KẾT THÚC THÊM MỚI 4] ===

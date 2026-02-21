@@ -14,4 +14,9 @@ export class DashboardController {
   getCustomerSegments() {
     return this.dashboardService.getCustomerSegments();
   }
+
+  @Get('reviews-analysis')
+  getReviewsAnalysis() {
+    return this.dashboardService.getReviewsAnalysis();
+  }
 }
