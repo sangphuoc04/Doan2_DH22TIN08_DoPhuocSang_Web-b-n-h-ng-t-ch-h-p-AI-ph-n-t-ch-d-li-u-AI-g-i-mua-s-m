@@ -59,7 +59,7 @@ export default function HomePage() {
       });
       setSelectedProduct(null);
       // ✅ FIX: thay alert() bằng toast đẹp
-      showToast('success', `Đặt hàng thành công! AI Admin đã ghi nhận doanh thu 🎉`);
+      showToast('success', `Đặt hàng thành công!🎉🎉🎉`);
     } catch (error: any) {
       // ✅ FIX: hiện lỗi cụ thể từ server thay vì "Lỗi mua hàng!" chung chung
       const msg = error?.response?.data?.message || 'Đặt hàng thất bại, vui lòng thử lại.';
@@ -73,12 +73,12 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50">
 
       {/* ✅ THÊM: Toast Container - góc dưới bên phải */}
-      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+      <div className="fixed bottom-6 right-6 z-100 flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
           <div
             key={toast.id}
             className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-white text-sm font-medium
-              min-w-[280px] max-w-[360px] pointer-events-auto
+              min-w-70 max-w-90 pointer-events-auto
               animate-in slide-in-from-right-5 fade-in duration-300
               ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
           >
