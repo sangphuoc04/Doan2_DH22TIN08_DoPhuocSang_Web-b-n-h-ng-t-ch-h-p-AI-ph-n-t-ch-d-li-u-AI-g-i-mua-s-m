@@ -9,7 +9,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from datetime import datetime
 import json
-
+#uvicorn main:app --reload
 # === [BẮT ĐẦU THÊM MỚI 1] IMPORT THƯ VIỆN CHO FEATURE 3 (K-MEANS) ===
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
@@ -105,7 +105,7 @@ Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy 
     except Exception as e:
         print(f"LỖI CHATBOT: {e}")
         return {"reply": "Hệ thống đang bảo trì."}
-        
+    
 # --- API 2: DỰ BÁO DOANH THU & TOP BÁN CHẠY ---
 @app.get("/predict-revenue")
 def predict_revenue():
