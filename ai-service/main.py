@@ -1,5 +1,6 @@
 # ai_service/main.py
 import mysql.connector
+from typing import List, Optional
 import requests
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -41,77 +42,158 @@ def get_products_context():
 
 class ChatRequest(BaseModel):
     question: str
-
+class HistoryItem(BaseModel):
+    role: str    # 'user' hoặc 'model'
+    content: str
+class ChatRequest(BaseModel):
+    question: str
+    history: Optional[List[HistoryItem]] = []
 # --- API 1: CHATBOT ---
 @app.post("/chatbot")
 async def chat_endpoint(req: ChatRequest):
     context = get_products_context()
-    prompt_text = f"Bạn là nhân viên tư vấn của shop thời trang. Dựa trên danh sách sau:\n{context}\nKhách hỏi: \"{req.question}\". Trả lời ngắn gọn, thân thiện."
+    system_prompt = f"""Bạn là nhân viên tư vấn thời trang thân thiện của Fashion AI Shop.
+Dựa trên danh sách sản phẩm sau để tư vấn khách hàng, trả lời ngắn gọn và tự nhiên:
+
+{context}
+
+Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy thành thật nói không có hàng.
+"""
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
+
     try:
-        response = requests.post(url, headers={'Content-Type': 'application/json'}, json={"contents": [{"parts": [{"text": prompt_text}]}]})
+        contents = []
+        contents.append({
+            "role": "user",
+            "parts": [{"text": system_prompt}]
+        })
+        contents.append({
+            "role": "model",
+            "parts": [{"text": "Tôi đã hiểu. Tôi sẵn sàng tư vấn thời trang cho khách hàng!"}]
+        })
+
+        # ✅ Thêm history vào (tối đa 6 lượt = 3 cặp hỏi-đáp)
+        for item in (req.history or [])[-6:]:
+            role = item.role if item.role in ['user', 'model'] else 'user'
+            contents.append({
+                "role": role,
+                "parts": [{"text": item.content}]
+            })
+        contents.append({
+            "role": "user",
+            "parts": [{"text": req.question}]
+        })
+
+        payload = {"contents": contents}
+
+        response = requests.post(
+            url,
+            headers={'Content-Type': 'application/json'},
+            json=payload,
+            timeout=18 
+        )
         result = response.json()
+
         if "candidates" in result:
             return {"reply": result['candidates'][0]['content']['parts'][0]['text']}
-        return {"reply": "Xin lỗi, AI chưa hiểu rõ ý bạn."}
-    except Exception:
-        return {"reply": "Hệ thống đang bảo trì."}
+        print(">>> LỖI GEMINI CHATBOT:", result)
+        return {"reply": "Xin lỗi, AI chưa hiểu rõ ý bạn. Bạn có thể hỏi lại không?"}
 
+    except requests.exceptions.Timeout:
+        return {"reply": "AI đang bận, vui lòng thử lại sau vài giây nhé!"}
+    except Exception as e:
+        print(f"LỖI CHATBOT: {e}")
+        return {"reply": "Hệ thống đang bảo trì."}
+        
 # --- API 2: DỰ BÁO DOANH THU & TOP BÁN CHẠY ---
 @app.get("/predict-revenue")
 def predict_revenue():
     try:
         conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
         cursor = conn.cursor(dictionary=True)
-        
-        # 1. LẤY DOANH THU (Đã fix lỗi Warning của Pandas)
+
         cursor.execute("SELECT createdAt, totalAmount FROM `Order` WHERE status = 'COMPLETED'")
         order_rows = cursor.fetchall()
-        
+
         if not order_rows:
-            return {"data": [], "analysis": {"trend": "CHƯA RÕ", "growth_rate": 0, "advice": "Chưa có dữ liệu", "season_tip": "Chưa có dữ liệu", "top_products": []}}
+            return {
+                "data": [],
+                "analysis": {
+                    "trend": "CHƯA RÕ", "growth_rate": 0,
+                    "advice": "Chưa có dữ liệu", "season_tip": "Chưa có dữ liệu",
+                    "top_products": []
+                }
+            }
 
         df = pd.DataFrame(order_rows)
         df['createdAt'] = pd.to_datetime(df['createdAt'])
-        
+
+        # ✅ FIX 1: Ép kiểu totalAmount sang float trước khi resample
+        # MySQL trả về Decimal, Pandas giữ nguyên kiểu đó → Recharts đọc sai
+        df['totalAmount'] = df['totalAmount'].astype(float)
+
+        # ✅ FIX 2: Sort theo thời gian trước khi resample để đảm bảo thứ tự tháng đúng
+        df = df.sort_values('createdAt')
+
         try:
             monthly_revenue = df.resample('ME', on='createdAt')['totalAmount'].sum().reset_index()
-        except:
+        except Exception:
             monthly_revenue = df.resample('M', on='createdAt')['totalAmount'].sum().reset_index()
-            
+
         monthly_revenue.columns = ['Date', 'Revenue']
-        
-        # Chạy AI Linear Regression (Đã fix lỗi Warning Feature Names)
+
+        # ✅ FIX 3: Ép kiểu Revenue sang float thuần (tránh numpy.float64 gây lỗi JSON)
+        monthly_revenue['Revenue'] = monthly_revenue['Revenue'].astype(float)
+
+        # ✅ FIX 4: Chỉ lấy 12 tháng gần nhất để biểu đồ không quá dài
+        monthly_revenue = monthly_revenue.tail(12).reset_index(drop=True)
+
+        # Linear Regression dự báo tháng tới
         monthly_revenue['Month_Index'] = np.arange(len(monthly_revenue))
         X = monthly_revenue[['Month_Index']]
         y = monthly_revenue['Revenue']
-        
+
         model = LinearRegression()
         model.fit(X, y)
         future_X = pd.DataFrame({'Month_Index': [len(monthly_revenue)]})
-        next_month_revenue = model.predict(future_X)[0]
-        
-        chart_data = [{"name": row['Date'].strftime("T%m"), "revenue": row['Revenue'], "prediction": None} for index, row in monthly_revenue.iterrows()]
+        next_month_revenue = float(model.predict(future_X)[0])  # ✅ FIX: ép kiểu float rõ ràng
+
+        # ✅ FIX 5: Label tháng/năm rõ ràng (T01/25 thay vì chỉ T01)
+        # Tránh trường hợp có 2 tháng 1 của 2 năm khác nhau trùng nhãn
+        chart_data = []
+        for _, row in monthly_revenue.iterrows():
+            chart_data.append({
+                "name": row['Date'].strftime("T%m/%y"),        # VD: T01/25
+                "revenue": round(float(row['Revenue'])),        # ✅ round + float rõ ràng
+                "prediction": None
+            })
+
+        # Thêm điểm dự báo tháng tiếp theo
         last_date = monthly_revenue.iloc[-1]['Date']
         next_date = last_date + pd.DateOffset(months=1)
-        chart_data.append({"name": next_date.strftime("T%m"), "revenue": None, "prediction": max(0, round(next_month_revenue))})
+        chart_data.append({
+            "name": next_date.strftime("T%m/%y"),
+            "revenue": None,
+            "prediction": max(0, round(next_month_revenue))     # ✅ round rõ ràng
+        })
 
-        # 2. XỬ LÝ LỜI KHUYÊN
-        last_revenue = y.iloc[-1]
+        # Lời khuyên
+        last_revenue = float(y.iloc[-1])
         growth_rate = ((next_month_revenue - last_revenue) / last_revenue) * 100 if last_revenue > 0 else 0
         trend_status = "TĂNG TRƯỞNG" if next_month_revenue > last_revenue else "SUY GIẢM"
-        
+
         current_month = datetime.now().month
-        if current_month in [3, 4, 5]: season_advice = "Mùa Xuân. Nên nhập: Áo Cardigan mỏng, Váy hoa."
+        if current_month in [3, 4, 5]:   season_advice = "Mùa Xuân. Nên nhập: Áo Cardigan mỏng, Váy hoa."
         elif current_month in [6, 7, 8]: season_advice = "Mùa Hè. Ưu tiên: Áo thun cotton, Quần Short."
         elif current_month in [9, 10, 11]: season_advice = "Mùa Thu. Nên nhập: Áo Hoodie, Blazer."
         else: season_advice = "Mùa Đông/Tết. Cần nhập gấp: Áo phao, Len dày."
 
-        if growth_rate > 10: advice = f"Tăng mạnh (+{growth_rate:.1f}%). NHẬP THÊM HÀNG."
-        elif growth_rate > 0: advice = f"Tăng nhẹ (+{growth_rate:.1f}%). Duy trì ổn định."
-        else: advice = f"Giảm ({growth_rate:.1f}%). Hạn chế nhập, Xả kho."
+        if growth_rate > 10:   advice = f"Tăng mạnh (+{growth_rate:.1f}%). NHẬP THÊM HÀNG."
+        elif growth_rate > 0:  advice = f"Tăng nhẹ (+{growth_rate:.1f}%). Duy trì ổn định."
+        else:                   advice = f"Giảm ({growth_rate:.1f}%). Hạn chế nhập, Xả kho."
 
-        # 3. TOP BÁN CHẠY (Đã fix ép kiểu Số nguyên - Int)
+        # Top bán chạy
         cursor.execute("""
             SELECT p.name, SUM(oi.quantity) as total_sold
             FROM OrderItem oi
@@ -121,12 +203,12 @@ def predict_revenue():
             LIMIT 3
         """)
         raw_top_products = cursor.fetchall()
-        
-        top_products = []
-        for item in raw_top_products:
-            # Ép kiểu an toàn sang số nguyên để Next.js đọc được
-            top_products.append({"name": item['name'], "total_sold": int(item['total_sold'])})
         conn.close()
+
+        top_products = [
+            {"name": item['name'], "total_sold": int(item['total_sold'])}
+            for item in raw_top_products
+        ]
 
         return {
             "data": chart_data,
@@ -138,9 +220,10 @@ def predict_revenue():
                 "top_products": top_products
             }
         }
+
     except Exception as e:
-        print(f"LỖI: {e}")
-        return {"error": str(e)}
+        print(f"LỖI PREDICT REVENUE: {e}")
+        return {"error": str(e), "data": [], "analysis": {}}
 
 # === [BẮT ĐẦU THÊM MỚI 2] API 3: PHÂN KHÚC KHÁCH HÀNG BẰNG K-MEANS ===
 @app.get("/customer-segments")
@@ -322,7 +405,6 @@ def analyze_reviews():
 # === [KẾT THÚC THÊM MỚI 3] ===
 
 # === [BẮT ĐẦU THÊM MỚI 4] API 5: VISUAL SEARCH (TÌM KIẾM BẰNG HÌNH ẢNH) ===
-
 class ImageSearchRequest(BaseModel):
     image_base64: str
 
@@ -330,10 +412,24 @@ class ImageSearchRequest(BaseModel):
 def visual_search(req: ImageSearchRequest):
     print(">>> [PYTHON] Đã nhận request! Đang kết nối Database...")
     try:
-        # 1. Xử lý chuỗi Base64 (Cắt bỏ phần header data:image/jpeg;base64, nếu có)
+        # 1. Xử lý chuỗi Base64 và TỰ DETECT mime_type từ header
         base64_data = req.image_base64
+        mime_type = "image/jpeg"  # mặc định
+
         if "," in base64_data:
-            base64_data = base64_data.split(",")[1]
+            header, base64_data = base64_data.split(",", 1)
+            # Detect đúng định dạng ảnh từ header data URI
+            if "image/png" in header:
+                mime_type = "image/png"
+            elif "image/webp" in header:
+                mime_type = "image/webp"
+            elif "image/gif" in header:
+                mime_type = "image/gif"
+            elif "image/jpeg" in header or "image/jpg" in header:
+                mime_type = "image/jpeg"
+            # Mặc định jpeg nếu không nhận ra
+
+        print(f">>> [PYTHON] Loại ảnh phát hiện: {mime_type}")
 
         # 2. Lấy danh sách sản phẩm từ DB làm "từ điển" cho AI tìm kiếm
         conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
@@ -359,7 +455,7 @@ def visual_search(req: ImageSearchRequest):
         """
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
-        
+
         # Payload gửi dạng Multimodal (Text + Image)
         payload = {
             "contents": [
@@ -368,7 +464,7 @@ def visual_search(req: ImageSearchRequest):
                         {"text": prompt_text},
                         {
                             "inline_data": {
-                                "mime_type": "image/jpeg", # Gemini tự nhận diện định dạng thật
+                                "mime_type": mime_type,  # ✅ FIX: dùng mime_type động, không hardcode
                                 "data": base64_data
                             }
                         }
@@ -377,36 +473,48 @@ def visual_search(req: ImageSearchRequest):
             ]
         }
 
-        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload, timeout=25)
-        
-        print(">>> [PYTHON] Gemini đã trả lời xong! Đang phân tích kết quả...")
-        result = response.json()
+        # ✅ FIX: Chỉ gọi Gemini MỘT LẦN DUY NHẤT, có timeout rõ ràng
+        print(">>> [PYTHON] Đang gửi ảnh sang Gemini AI...")
+        response = requests.post(
+            url,
+            headers={'Content-Type': 'application/json'},
+            json=payload,
+            timeout=30  # Tối đa 30 giây, tránh treo server
+        )
 
-        # 4. Gọi Gemini API
-        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+        print(">>> [PYTHON] Gemini đã trả lời xong! Đang phân tích kết quả...")
         result = response.json()
 
         if "candidates" not in result:
             print(">>> LỖI GEMINI VISUAL SEARCH:", result)
-            return {"status": "error", "message": "Không thể phân tích ảnh lúc này", "data": []}
+            error_msg = result.get('error', {}).get('message', 'Lỗi không xác định')
+            return {"status": "error", "message": f"Gemini lỗi: {error_msg}", "data": []}
 
         raw_text = result['candidates'][0]['content']['parts'][0]['text']
         raw_text = raw_text.replace("```json", "").replace("```", "").strip()
 
         try:
             matched_ids = json.loads(raw_text)
+            if not isinstance(matched_ids, list):
+                matched_ids = []
         except json.JSONDecodeError:
+            print(">>> LỖI PARSE JSON:", raw_text)
             matched_ids = []
 
         # 5. Map lại data chi tiết để trả về Frontend
         matched_products = [p for p in products if p["id"] in matched_ids]
 
+        print(f">>> [PYTHON] Tìm thấy {len(matched_products)} sản phẩm phù hợp.")
         return {
             "status": "success",
             "data": matched_products
         }
 
+    except requests.exceptions.Timeout:
+        print(">>> LỖI: Gemini timeout sau 30 giây!")
+        return {"status": "error", "message": "AI phân tích quá lâu, vui lòng thử lại.", "data": []}
     except Exception as e:
         print(f"LỖI VISUAL SEARCH: {e}")
         return {"status": "error", "message": str(e), "data": []}
+
 # === [KẾT THÚC THÊM MỚI 4] ===

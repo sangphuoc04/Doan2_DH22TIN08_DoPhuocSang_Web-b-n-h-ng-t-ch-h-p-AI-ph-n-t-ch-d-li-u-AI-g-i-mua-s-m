@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
-import { ShoppingCart, User, Search, Menu, Camera, X } from 'lucide-react';
+import { ShoppingCart, User, Search, Menu, Camera, X, AlertCircle, MessageCircle } from 'lucide-react';
 import axios from 'axios';
 import { usePathname } from 'next/navigation';
 
@@ -13,6 +13,8 @@ export default function Header() {
     const [loading, setLoading] = useState(false);
     const [aiResults, setAiResults] = useState<any[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleTextSearch = (e: React.FormEvent) => {
@@ -25,31 +27,69 @@ export default function Header() {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // ✅ FIX: Validate file trước khi gửi
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Chỉ hỗ trợ ảnh JPG, PNG, WebP, GIF!');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB
+            alert('Ảnh quá lớn! Vui lòng chọn ảnh dưới 5MB.');
+            return;
+        }
+
+        // ✅ THÊM: Reset state cũ trước khi tìm mới
+        setAiResults([]);
+        setErrorMsg(null);
         setLoading(true);
-        setShowDropdown(true); // Mở sẵn bảng dropdown để hiện loading
+        setShowDropdown(true);
 
         const reader = new FileReader();
         reader.readAsDataURL(file);
         reader.onloadend = async () => {
             const base64String = reader.result as string;
 
+            // ✅ THÊM: Hiện preview ảnh ngay lập tức (không cần đợi API)
+            setPreviewUrl(base64String);
+
             try {
-                // Gọi API Gateway NestJS
                 const res = await axios.post('http://localhost:3050/products/visual-search', {
                     image_base64: base64String
+                }, {
+                    timeout: 35000 // ✅ FIX: Thêm timeout 35s cho axios (> timeout Python 30s)
                 });
 
                 if (res.data.status === 'success') {
                     setAiResults(res.data.data);
+                    if (res.data.data.length === 0) {
+                        setErrorMsg('AI không tìm thấy sản phẩm tương tự trong cửa hàng.');
+                    }
+                } else {
+                    // ✅ FIX: Hiện message lỗi từ backend thay vì im lặng
+                    setErrorMsg(res.data.message || 'Có lỗi xảy ra khi phân tích ảnh.');
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Lỗi tìm kiếm ảnh:", error);
+                if (error.code === 'ECONNABORTED') {
+                    setErrorMsg('AI phân tích quá lâu, vui lòng thử lại.');
+                } else if (error.response?.status === 500) {
+                    setErrorMsg('Server đang gặp sự cố, thử lại sau ít phút.');
+                } else {
+                    setErrorMsg('Không thể kết nối server. Hãy kiểm tra backend.');
+                }
             } finally {
                 setLoading(false);
-                // Reset input file để chọn lại ảnh cùng tên vẫn ăn sự kiện onChange
                 if (fileInputRef.current) fileInputRef.current.value = '';
             }
         };
+    };
+
+    // Đóng dropdown và reset hoàn toàn
+    const handleClose = () => {
+        setShowDropdown(false);
+        setPreviewUrl(null);
+        setAiResults([]);
+        setErrorMsg(null);
     };
 
     if (pathname && pathname.startsWith('/admin')) {
@@ -61,7 +101,7 @@ export default function Header() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
 
-                    {/* 1. LOGO & MENU TRÁI */}
+                    {/* LOGO & MENU TRÁI */}
                     <div className="flex items-center gap-8">
                         <Link href="/" className="shrink-0 flex items-center gap-2">
                             <span className="text-2xl font-black bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -75,7 +115,7 @@ export default function Header() {
                         </nav>
                     </div>
 
-                    {/* 2. THANH TÌM KIẾM CÓ TÍCH HỢP AI */}
+                    {/* THANH TÌM KIẾM CÓ TÍCH HỢP AI */}
                     <div className="hidden sm:flex flex-1 max-w-2xl px-8 relative">
                         <form onSubmit={handleTextSearch} className="w-full relative flex items-center">
                             <input
@@ -87,25 +127,21 @@ export default function Header() {
                             />
 
                             <div className="absolute right-2 flex items-center gap-1">
-                                {/* Input ẩn để chọn file */}
                                 <input
                                     type="file"
-                                    accept="image/*"
+                                    accept="image/jpeg,image/png,image/webp,image/gif"
                                     className="hidden"
                                     ref={fileInputRef}
                                     onChange={handleImageUpload}
                                 />
-                                {/* Nút Camera gọi input file */}
                                 <button
                                     type="button"
                                     onClick={() => fileInputRef.current?.click()}
                                     className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                                    title="Tìm bằng hình ảnh"
+                                    title="Tìm bằng hình ảnh (JPG, PNG, WebP)"
                                 >
                                     <Camera size={20} />
                                 </button>
-
-                                {/* Nút tìm Text */}
                                 <button
                                     type="submit"
                                     className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors"
@@ -115,13 +151,12 @@ export default function Header() {
                             </div>
                         </form>
 
-                        {/* --- DROPDOWN KẾT QUẢ VISUAL SEARCH --- */}
+                        {/* DROPDOWN KẾT QUẢ VISUAL SEARCH */}
                         {showDropdown && (
                             <div className="absolute top-full mt-2 w-full left-0 px-8">
                                 <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 overflow-hidden relative">
-                                    {/* Nút đóng */}
                                     <button
-                                        onClick={() => setShowDropdown(false)}
+                                        onClick={handleClose}
                                         className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500 rounded-full hover:bg-red-50"
                                     >
                                         <X size={20} />
@@ -132,52 +167,80 @@ export default function Header() {
                                         AI Gợi ý Sản phẩm Tương tự
                                     </h3>
 
+                                    {/* ✅ THÊM: Preview ảnh đã upload */}
+                                    {previewUrl && (
+                                        <div className="mb-4 flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                                            <img
+                                                src={previewUrl}
+                                                alt="Ảnh bạn tìm kiếm"
+                                                className="w-16 h-16 object-cover rounded-lg border border-blue-200 shadow-sm"
+                                            />
+                                            <div>
+                                                <p className="text-xs font-semibold text-blue-700">Ảnh bạn tìm kiếm</p>
+                                                <p className="text-xs text-blue-500 mt-0.5">
+                                                    {loading ? 'Gemini đang phân tích...' : `Tìm thấy ${aiResults.length} sản phẩm tương tự`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {loading ? (
-                                        <div className="flex flex-col items-center justify-center py-8">
+                                        <div className="flex flex-col items-center justify-center py-6">
                                             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                             <p className="text-sm text-gray-500 mt-3 animate-pulse">Gemini đang quét ảnh của bạn...</p>
                                         </div>
+                                    ) : errorMsg ? (
+                                        // ✅ THÊM: Hiện lỗi thay vì im lặng
+                                        <div className="flex items-center gap-3 py-4 px-3 bg-red-50 rounded-xl border border-red-100">
+                                            <AlertCircle size={20} className="text-red-500 shrink-0" />
+                                            <p className="text-sm text-red-600">{errorMsg}</p>
+                                        </div>
                                     ) : aiResults.length > 0 ? (
-                                        <div className="grid grid-cols-4 gap-4">
-                                            {aiResults.map((prod) => (
-                                                <div key={prod.id} className="group cursor-pointer">
-                                                    <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-2 relative">
-                                                        {/* Fix tạm lỗi k có ảnh thật thì dùng div màu xám */}
-                                                        {prod.image ? (
-                                                            <img src={prod.image} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center text-gray-300">No Image</div>
-                                                        )}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            {aiResults.map((product: any) => (
+                                                <Link
+                                                    key={product.id}
+                                                    href={`/products/${product.id}`}
+                                                    onClick={handleClose}
+                                                    className="group flex flex-col rounded-xl border border-gray-100 overflow-hidden hover:border-blue-300 hover:shadow-md transition-all"
+                                                >
+                                                    <div className="aspect-square bg-gray-100 overflow-hidden">
+                                                        <img
+                                                            src={product.image}
+                                                            alt={product.name}
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).src = '/placeholder.png';
+                                                            }}
+                                                        />
                                                     </div>
-                                                    <h4 className="text-sm font-semibold text-gray-700 line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors">{prod.name}</h4>
-                                                    <p className="text-red-500 font-bold mt-1 text-sm">{prod.price.toLocaleString()} đ</p>
-                                                </div>
+                                                    <div className="p-2">
+                                                        <p className="text-xs font-semibold text-gray-800 line-clamp-2">{product.name}</p>
+                                                        <p className="text-xs text-blue-600 font-bold mt-1">
+                                                            {Number(product.price).toLocaleString('vi-VN')}đ
+                                                        </p>
+                                                    </div>
+                                                </Link>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <div className="text-center py-6 text-gray-500 text-sm">
-                                            Rất tiếc, AI không tìm thấy sản phẩm nào giống với ảnh của bạn.
-                                        </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             </div>
                         )}
                     </div>
 
-                    {/* 3. ICON BÊN PHẢI (GIỎ HÀNG & TÀI KHOẢN) */}
+                    {/* ICONS PHẢI */}
                     <div className="flex items-center gap-4">
-                        <button className="text-gray-500 hover:text-blue-600 transition-colors p-2 relative">
+                        <Link href="/cart" className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors">
                             <ShoppingCart size={24} />
-                            <span className="absolute top-0 right-0 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-500 rounded-full">
-                                3
-                            </span>
-                        </button>
-
-                        <Link href="/login" className="text-gray-500 hover:text-blue-600 transition-colors p-2 hidden sm:block">
+                        </Link>
+                        <Link href="/login" className="p-2 text-gray-600 hover:text-blue-600 transition-colors">
                             <User size={24} />
                         </Link>
+                        <Link href="/contact" className="p-2 text-gray-600 hover:text-blue-600 transition-colors">
+                            <MessageCircle size={24} />
+                        </Link>
                     </div>
-
                 </div>
             </div>
         </header>

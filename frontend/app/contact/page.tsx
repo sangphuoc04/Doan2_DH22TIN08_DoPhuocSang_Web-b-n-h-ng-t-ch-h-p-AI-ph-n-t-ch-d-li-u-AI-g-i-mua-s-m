@@ -2,10 +2,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, MapPin, Phone, Mail, Clock, Bot, User } from 'lucide-react'; // Icon đẹp
+import { Send, MapPin, Phone, Mail, Clock, Bot, User } from 'lucide-react';
 import axios from 'axios';
 
-// Định nghĩa kiểu dữ liệu cho tin nhắn
 type Message = {
     id: number;
     role: 'user' | 'bot';
@@ -13,7 +12,6 @@ type Message = {
 };
 
 export default function ContactPage() {
-    // State lưu trữ danh sách tin nhắn
     const [messages, setMessages] = useState<Message[]>([
         { id: 1, role: 'bot', content: 'Chào bạn! Mình là AI tư vấn thời trang. Bạn muốn tìm quần áo đi chơi hay đi làm ạ?' }
     ]);
@@ -21,52 +19,65 @@ export default function ContactPage() {
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Tự động cuộn xuống khi có tin nhắn mới
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
     useEffect(scrollToBottom, [messages]);
 
-    // Hàm gửi tin nhắn
     const handleSend = async () => {
-        if (!input.trim()) return;
+        if (!input.trim() || isLoading) return;
 
-        // 1. Hiển thị tin nhắn của người dùng ngay lập tức
-        const userMsg: Message = { id: Date.now(), role: 'user', content: input };
-        setMessages((prev) => [...prev, userMsg]);
+        const userMsg: Message = { id: Date.now(), role: 'user', content: input.trim() };
+
+        // ✅ FIX: Lấy messages HIỆN TẠI trước khi setMessages (tránh closure stale)
+        const currentMessages = [...messages, userMsg];
+        setMessages(currentMessages);
         setInput('');
         setIsLoading(true);
 
         try {
-            // 2. Gọi API sang Backend
+            // ✅ THÊM: Gửi kèm history (6 tin nhắn gần nhất, bỏ tin nhắn đầu tiên mặc định)
+            // Chuyển đổi role 'bot' → 'model' cho đúng format Gemini
+            const history = currentMessages
+                .slice(-7, -1) // 6 tin nhắn trước tin nhắn vừa gửi
+                .map(m => ({
+                    role: m.role === 'bot' ? 'model' : 'user',
+                    content: m.content
+                }));
+
             const response = await axios.post('http://localhost:3050/chat', {
                 message: userMsg.content,
+                history: history, // ✅ THÊM: truyền history
+            }, {
+                timeout: 20000 // ✅ THÊM: timeout 20 giây
             });
 
-            // 3. Hiển thị câu trả lời của AI
             const botMsg: Message = {
                 id: Date.now() + 1,
                 role: 'bot',
                 content: response.data.reply
             };
-            setMessages((prev) => [...prev, botMsg]);
-        } catch (error) {
-            console.error(error);
-            const errorMsg: Message = { id: Date.now(), role: 'bot', content: 'Lỗi kết nối! Hãy chắc chắn Backend đang chạy.' };
-            setMessages((prev) => [...prev, errorMsg]);
+            setMessages(prev => [...prev, botMsg]);
+
+        } catch (error: any) {
+            let errContent = 'Lỗi kết nối! Hãy chắc chắn Backend đang chạy.';
+            if (error.code === 'ECONNABORTED') {
+                errContent = 'AI phản hồi quá lâu, vui lòng thử lại nhé!';
+            }
+            const errorMsg: Message = { id: Date.now(), role: 'bot', content: errContent };
+            setMessages(prev => [...prev, errorMsg]);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Xử lý khi nhấn Enter
     const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleSend();
+        if (e.key === 'Enter' && !e.shiftKey) handleSend();
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-3 min-h-150 border border-gray-200">
+        <div className="h-screen bg-gray-50 flex items-center justify-center p-4 overflow-hidden">
+            <div className="w-full max-w-6xl bg-white rounded-2xl shadow-xl overflow-hidden grid grid-cols-1 lg:grid-cols-3 h-full max-h-[90vh] border border-gray-200">
 
                 {/* --- CỘT TRÁI: THÔNG TIN LIÊN HỆ --- */}
                 <div className="bg-blue-600 text-white p-8 flex flex-col justify-between">
@@ -102,7 +113,7 @@ export default function ContactPage() {
                 </div>
 
                 {/* --- CỘT PHẢI: CHATBOT AI --- */}
-                <div className="lg:col-span-2 flex flex-col bg-gray-50">
+                <div className="lg:col-span-2 flex flex-col bg-gray-50 min-h-0">
                     {/* Header Chat */}
                     <div className="p-4 bg-white border-b flex items-center gap-4 shadow-sm z-10">
                         <div className="relative">
@@ -118,22 +129,17 @@ export default function ContactPage() {
                     </div>
 
                     {/* Nội dung Chat */}
-                    <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-gray-50">
+                    <div className="flex-1 min-h-0 p-6 overflow-y-auto space-y-4 bg-gray-50">
                         {messages.map((msg) => (
                             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-
-                                    {/* Avatar nhỏ */}
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-green-500 text-white'}`}>
                                         {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                                     </div>
-
-                                    {/* Bong bóng chat */}
                                     <div className={`p-4 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
                                         ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none'
                                         : 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-none'
                                         }`}>
-                                        {/* Xử lý xuống dòng cho đẹp */}
                                         {msg.content.split('\n').map((line, i) => (
                                             <p key={i} className={`${i > 0 ? 'mt-1' : ''}`}>{line}</p>
                                         ))}
@@ -160,9 +166,14 @@ export default function ContactPage() {
                                 onChange={(e) => setInput(e.target.value)}
                                 onKeyDown={handleKeyPress}
                                 placeholder="Ví dụ: Shop có váy dạ hội màu đỏ size M không?"
+                                maxLength={500} // ✅ THÊM: giới hạn độ dài tin nhắn
                                 className="flex-1 bg-transparent focus:outline-none text-gray-700 placeholder-gray-400"
                                 disabled={isLoading}
                             />
+                            {/* ✅ THÊM: hiện số ký tự còn lại khi gần đầy */}
+                            {input.length > 400 && (
+                                <span className="text-xs text-gray-400 shrink-0">{500 - input.length}</span>
+                            )}
                             <button
                                 onClick={handleSend}
                                 disabled={isLoading || !input.trim()}
@@ -171,7 +182,7 @@ export default function ContactPage() {
                                 <Send size={18} />
                             </button>
                         </div>
-                        <p className="text-center text-xs text-gray-400 mt-2">Mua sắm theo cách cảu bạn.</p>
+                        <p className="text-center text-xs text-gray-400 mt-2">Mua sắm theo cách của bạn.</p>
                     </div>
                 </div>
 

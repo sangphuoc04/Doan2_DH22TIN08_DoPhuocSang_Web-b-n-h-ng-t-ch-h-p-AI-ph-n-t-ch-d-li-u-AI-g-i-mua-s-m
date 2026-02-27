@@ -1,9 +1,9 @@
 // frontend/app/page.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { ShoppingCart, Star, TrendingUp, X } from 'lucide-react';
+import { ShoppingCart, TrendingUp, X, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
 // Kiểu dữ liệu sản phẩm
@@ -15,20 +15,39 @@ type Product = {
   category: string;
 };
 
+// ✅ THÊM: kiểu dữ liệu Toast
+type Toast = {
+  id: number;
+  type: 'success' | 'error';
+  message: string;
+};
+
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
 
-  // 1. Lấy danh sách sản phẩm từ Backend
+  // ✅ THÊM: state quản lý toast
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // ✅ THÊM: hàm hiện toast, tự động tắt sau 3 giây
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3500);
+  }, []);
+
+  // Lấy danh sách sản phẩm từ Backend
   useEffect(() => {
     axios.get('http://localhost:3050/products')
       .then(res => setProducts(res.data))
-      .catch(err => console.error(err));
+      .catch(() => showToast('error', 'Không thể tải sản phẩm. Hãy kiểm tra backend.'));
   }, []);
 
-  // 2. Xử lý Mua Hàng
+  // Xử lý Mua Hàng
   const handleBuy = async () => {
     if (!selectedProduct) return;
     setLoading(true);
@@ -38,10 +57,13 @@ export default function HomePage() {
         quantity: quantity,
         totalAmount: selectedProduct.price * quantity
       });
-      alert(`✅ Mua thành công! AI Admin đã ghi nhận doanh thu.`);
-      setSelectedProduct(null); // Đóng modal
-    } catch (error) {
-      alert('Lỗi mua hàng!');
+      setSelectedProduct(null);
+      // ✅ FIX: thay alert() bằng toast đẹp
+      showToast('success', `Đặt hàng thành công! AI Admin đã ghi nhận doanh thu 🎉`);
+    } catch (error: any) {
+      // ✅ FIX: hiện lỗi cụ thể từ server thay vì "Lỗi mua hàng!" chung chung
+      const msg = error?.response?.data?.message || 'Đặt hàng thất bại, vui lòng thử lại.';
+      showToast('error', msg);
     } finally {
       setLoading(false);
     }
@@ -50,16 +72,30 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* HEADER */}
-      <header className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-blue-600">FASHION AI SHOP</h1>
-          <div className="flex gap-4">
-            <Link href="/contact" className="text-gray-600 hover:text-blue-600 font-medium">Chat AI</Link>
-            <Link href="/admin" className="text-gray-600 hover:text-blue-600 font-medium">Vào Admin</Link>
+      {/* ✅ THÊM: Toast Container - góc dưới bên phải */}
+      <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-white text-sm font-medium
+              min-w-[280px] max-w-[360px] pointer-events-auto
+              animate-in slide-in-from-right-5 fade-in duration-300
+              ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
+          >
+            {toast.type === 'success'
+              ? <CheckCircle size={20} className="shrink-0" />
+              : <AlertCircle size={20} className="shrink-0" />
+            }
+            <span className="flex-1">{toast.message}</span>
+            <button
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="shrink-0 opacity-70 hover:opacity-100 transition-opacity"
+            >
+              <X size={16} />
+            </button>
           </div>
-        </div>
-      </header>
+        ))}
+      </div>
 
       {/* BANNER */}
       <div className="bg-linear-to-r from-blue-500 to-purple-600 text-white py-12">
@@ -79,34 +115,22 @@ export default function HomePage() {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <div key={product.id} className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-shadow overflow-hidden border border-gray-100 group">
-              <div className="relative h-64 overflow-hidden">
+          {products.map(product => (
+            <div key={product.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-gray-100 group">
+              <div className="aspect-square overflow-hidden bg-gray-100">
                 <img
                   src={product.image}
                   alt={product.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.png'; }}
                 />
-                <div className="absolute top-2 right-2 bg-white px-2 py-1 rounded-md text-xs font-bold shadow-sm">
-                  {product.category}
-                </div>
               </div>
-
               <div className="p-4">
-                <h4 className="font-semibold text-gray-800 line-clamp-1 mb-1">{product.name}</h4>
-                <div className="flex justify-between items-center">
-                  <span className="text-red-500 font-bold">
-                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}
-                  </span>
-                  <div className="flex text-yellow-400 text-xs">
-                    <Star size={12} fill="currentColor" />
-                    <Star size={12} fill="currentColor" />
-                    <Star size={12} fill="currentColor" />
-                    <Star size={12} fill="currentColor" />
-                    <Star size={12} fill="currentColor" />
-                  </div>
-                </div>
-
+                <span className="text-xs text-blue-500 font-medium bg-blue-50 px-2 py-0.5 rounded-full">{product.category}</span>
+                <h4 className="font-semibold text-gray-800 mt-2 line-clamp-2">{product.name}</h4>
+                <p className="text-red-500 font-bold mt-1">
+                  {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}
+                </p>
                 <button
                   onClick={() => { setSelectedProduct(product); setQuantity(1); }}
                   className="w-full mt-4 bg-gray-900 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-2 font-medium"
@@ -132,7 +156,12 @@ export default function HomePage() {
 
             <div className="p-6">
               <div className="flex gap-4 mb-6">
-                <img src={selectedProduct.image} className="w-20 h-20 object-cover rounded-lg" />
+                <img
+                  src={selectedProduct.image}
+                  alt={selectedProduct.name}
+                  className="w-20 h-20 object-cover rounded-lg"
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.png'; }}
+                />
                 <div>
                   <h4 className="font-bold text-gray-800">{selectedProduct.name}</h4>
                   <p className="text-red-500 font-bold">
@@ -165,9 +194,14 @@ export default function HomePage() {
               <button
                 onClick={handleBuy}
                 disabled={loading}
-                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg shadow-blue-200"
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-blue-200 transition-all"
               >
-                {loading ? 'Đang xử lý...' : 'CHỐT ĐƠN NGAY'}
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Đang xử lý...
+                  </span>
+                ) : 'CHỐT ĐƠN NGAY'}
               </button>
             </div>
           </div>
