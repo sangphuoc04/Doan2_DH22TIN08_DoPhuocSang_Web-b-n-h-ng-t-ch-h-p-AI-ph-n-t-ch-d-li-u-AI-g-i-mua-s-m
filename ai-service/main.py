@@ -313,8 +313,8 @@ def analyze_reviews():
         
         cursor.execute("""
             SELECT r.id, r.content, r.rating, p.name as productName
-            FROM Review r
-            JOIN Product p ON r.productId = p.id
+            FROM review r
+            JOIN product p ON r.productId = p.id
             ORDER BY r.id DESC LIMIT 50
         """)
         reviews = cursor.fetchall()
@@ -473,7 +473,6 @@ def visual_search(req: ImageSearchRequest):
             ]
         }
 
-        # ✅ FIX: Chỉ gọi Gemini MỘT LẦN DUY NHẤT, có timeout rõ ràng
         print(">>> [PYTHON] Đang gửi ảnh sang Gemini AI...")
         response = requests.post(
             url,

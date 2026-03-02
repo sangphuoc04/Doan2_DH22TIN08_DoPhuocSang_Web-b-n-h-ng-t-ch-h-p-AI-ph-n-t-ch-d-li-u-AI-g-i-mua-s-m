@@ -3,8 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, timeout } from 'rxjs';
 
-// ✅ THÊM: timeout tập trung một chỗ, dễ chỉnh sau này
-const PYTHON_TIMEOUT_MS = 15_000; // 15 giây
+const PYTHON_TIMEOUT_MS = 45_000;
 
 @Injectable()
 export class DashboardService {
@@ -15,7 +14,7 @@ export class DashboardService {
       const response = await firstValueFrom(
         this.httpService
           .get('http://127.0.0.1:8000/predict-revenue')
-          .pipe(timeout(PYTHON_TIMEOUT_MS)), // ✅ THÊM timeout
+          .pipe(timeout(PYTHON_TIMEOUT_MS)),
       );
       return response.data;
     } catch (error) {
@@ -34,7 +33,7 @@ export class DashboardService {
       const response = await firstValueFrom(
         this.httpService
           .get('http://127.0.0.1:8000/customer-segments')
-          .pipe(timeout(PYTHON_TIMEOUT_MS)), // ✅ THÊM timeout
+          .pipe(timeout(PYTHON_TIMEOUT_MS)),
       );
       return response.data;
     } catch (error) {
@@ -52,7 +51,7 @@ export class DashboardService {
       const response = await firstValueFrom(
         this.httpService
           .get('http://127.0.0.1:8000/analyze-reviews')
-          .pipe(timeout(PYTHON_TIMEOUT_MS)), // ✅ THÊM timeout
+          .pipe(timeout(PYTHON_TIMEOUT_MS)),
       );
       return response.data;
     } catch (error) {

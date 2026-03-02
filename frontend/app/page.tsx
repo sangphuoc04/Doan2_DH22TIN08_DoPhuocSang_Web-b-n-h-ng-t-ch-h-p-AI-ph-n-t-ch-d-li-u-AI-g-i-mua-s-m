@@ -6,7 +6,6 @@ import axios from 'axios';
 import { ShoppingCart, TrendingUp, X, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
-// Kiểu dữ liệu sản phẩm
 type Product = {
   id: number;
   name: string;
@@ -15,7 +14,6 @@ type Product = {
   category: string;
 };
 
-// ✅ THÊM: kiểu dữ liệu Toast
 type Toast = {
   id: number;
   type: 'success' | 'error';
@@ -27,11 +25,8 @@ export default function HomePage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
-
-  // ✅ THÊM: state quản lý toast
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // ✅ THÊM: hàm hiện toast, tự động tắt sau 3 giây
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, type, message }]);
@@ -40,14 +35,12 @@ export default function HomePage() {
     }, 3500);
   }, []);
 
-  // Lấy danh sách sản phẩm từ Backend
   useEffect(() => {
     axios.get('http://localhost:3050/products')
       .then(res => setProducts(res.data))
       .catch(() => showToast('error', 'Không thể tải sản phẩm. Hãy kiểm tra backend.'));
   }, []);
 
-  // Xử lý Mua Hàng
   const handleBuy = async () => {
     if (!selectedProduct) return;
     setLoading(true);
@@ -58,10 +51,8 @@ export default function HomePage() {
         totalAmount: selectedProduct.price * quantity
       });
       setSelectedProduct(null);
-      // ✅ FIX: thay alert() bằng toast đẹp
       showToast('success', `Đặt hàng thành công!🎉🎉🎉`);
     } catch (error: any) {
-      // ✅ FIX: hiện lỗi cụ thể từ server thay vì "Lỗi mua hàng!" chung chung
       const msg = error?.response?.data?.message || 'Đặt hàng thất bại, vui lòng thử lại.';
       showToast('error', msg);
     } finally {
@@ -72,7 +63,6 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ✅ THÊM: Toast Container - góc dưới bên phải */}
       <div className="fixed bottom-6 right-6 z-100 flex flex-col gap-3 pointer-events-none">
         {toasts.map(toast => (
           <div
@@ -108,7 +98,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* DANH SÁCH SẢN PHẨM */}
       <main className="max-w-7xl mx-auto px-4 py-12">
         <h3 className="text-2xl font-bold text-gray-800 mb-8 flex items-center gap-2">
           <TrendingUp className="text-red-500" /> Sản phẩm mới nhất
