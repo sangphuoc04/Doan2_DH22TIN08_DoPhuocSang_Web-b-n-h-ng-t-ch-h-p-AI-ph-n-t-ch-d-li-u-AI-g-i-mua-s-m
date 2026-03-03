@@ -4,7 +4,7 @@
 import React, { useEffect } from 'react';
 import {
     LayoutDashboard, Package, MessageSquare,
-    Image as ImageIcon, LogOut
+    Users, LogOut
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -15,21 +15,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const router = useRouter();
     const { user, isLoggedIn, logout } = useAuth();
 
-    // ✅ PHÂN QUYỀN: kiểm tra mỗi khi user/isLoggedIn thay đổi
     useEffect(() => {
-        // Chưa đăng nhập → về trang login
         if (!isLoggedIn) {
             router.replace('/login');
             return;
         }
-        // Đã đăng nhập nhưng không phải ADMIN → về trang chủ
         if (user?.role !== 'ADMIN') {
             router.replace('/');
         }
     }, [isLoggedIn, user, router]);
 
-    // Render loading trắng trong khi đang kiểm tra quyền
-    // (tránh flash nội dung admin trước khi redirect kịp)
     if (!isLoggedIn || user?.role !== 'ADMIN') {
         return (
             <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -42,7 +37,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: 'Dashboard (Dự báo)', href: '/admin', icon: LayoutDashboard },
         { name: 'Quản lý Sản phẩm', href: '/admin/products', icon: Package },
         { name: 'Phân tích Đánh giá (AI)', href: '/admin/reviews', icon: MessageSquare },
-        { name: 'Visual Search Data', href: '/admin/visual-data', icon: ImageIcon },
+        { name: 'Quản lý người dùng', href: '/admin/users', icon: Users },
     ];
 
     const handleLogout = () => {

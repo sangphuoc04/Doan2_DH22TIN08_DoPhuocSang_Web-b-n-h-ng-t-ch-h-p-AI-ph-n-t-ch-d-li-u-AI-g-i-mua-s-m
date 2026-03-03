@@ -6,7 +6,6 @@ import { HttpService } from '@nestjs/axios';
 
 const prisma = new PrismaClient();
 
-// ✅ Visual search cần lâu hơn vì Gemini xử lý ảnh — để 32s (> Python timeout 30s)
 const VISUAL_SEARCH_TIMEOUT_MS = 32_000;
 
 @Injectable()
@@ -19,6 +18,41 @@ export class ProductsService {
     });
   }
 
+  async findOne(id: number) {
+    return prisma.product.findUnique({
+      where: { id },
+    });
+  }
+
+  async create(data: any) {
+    return prisma.product.create({
+      data: {
+        ...data,
+        price: Number(data.price),
+        costPrice: Number(data.costPrice),
+        stock: Number(data.stock),
+      },
+    });
+  }
+
+  async update(id: number, data: any) {
+    return prisma.product.update({
+      where: { id },
+      data: {
+        ...data,
+        price: data.price ? Number(data.price) : undefined,
+        costPrice: data.costPrice ? Number(data.costPrice) : undefined,
+        stock: data.stock ? Number(data.stock) : undefined,
+      },
+    });
+  }
+
+  async remove(id: number) {
+    return prisma.product.delete({
+      where: { id },
+    });
+  }
+
   async visualSearch(imageBase64: string) {
     try {
       const response = await firstValueFrom(
@@ -26,7 +60,7 @@ export class ProductsService {
           .post('http://127.0.0.1:8000/visual-search', {
             image_base64: imageBase64,
           })
-          .pipe(timeout(VISUAL_SEARCH_TIMEOUT_MS)), // ✅ THÊM timeout
+          .pipe(timeout(VISUAL_SEARCH_TIMEOUT_MS)),
       );
       return response.data;
     } catch (error) {
