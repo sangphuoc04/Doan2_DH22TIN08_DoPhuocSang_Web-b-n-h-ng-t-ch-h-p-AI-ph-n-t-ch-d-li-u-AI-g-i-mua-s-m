@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { Search, ShoppingCart, User, Camera, X, AlertCircle, LogOut, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/authContext';
 
 export default function Header() {
@@ -14,8 +15,9 @@ export default function Header() {
     const [showDropdown, setShowDropdown] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
-    const [showUserMenu, setShowUserMenu] = useState(false); // ✅ THÊM: dropdown user
+    const [showUserMenu, setShowUserMenu] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const router = useRouter();
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -77,6 +79,15 @@ export default function Header() {
         setShowUserMenu(false);
     };
 
+    const handleTextSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (searchText.trim()) {
+            // Chuyển hướng sang trang /search kèm theo từ khóa
+            router.push(`/search?q=${encodeURIComponent(searchText.trim())}`);
+            setShowDropdown(false); // Đóng dropdown nếu đang mở
+        }
+    };
+
     return (
         <header className="bg-white shadow-sm sticky top-0 z-40">
             <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -86,7 +97,7 @@ export default function Header() {
 
                 {/* Search bar + Visual Search */}
                 <div className="flex-1 relative">
-                    <form onSubmit={e => e.preventDefault()}>
+                    <form onSubmit={handleTextSearch}>
                         <div className="flex items-center bg-gray-100 rounded-full px-4 py-2 gap-2 border border-transparent focus-within:border-blue-400 focus-within:bg-white transition-all">
                             <Search size={18} className="text-gray-400 shrink-0" />
                             <input

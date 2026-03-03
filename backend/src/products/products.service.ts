@@ -18,6 +18,21 @@ export class ProductsService {
     });
   }
 
+  async getCategories() {
+    const categories = await prisma.product.findMany({
+      select: { category: true },
+      distinct: ['category'],
+    });
+    return categories.map(c => c.category).filter(Boolean);
+  }
+
+  async findByCategory(category: string) {
+    return prisma.product.findMany({
+      where: { category: category },
+      orderBy: { id: 'desc' },
+    });
+  }
+
   async findOne(id: number) {
     return prisma.product.findUnique({
       where: { id },
@@ -50,6 +65,18 @@ export class ProductsService {
   async remove(id: number) {
     return prisma.product.delete({
       where: { id },
+    });
+  }
+
+  async searchProducts(keyword: string) {
+    return prisma.product.findMany({
+      where: {
+        OR: [
+          { name: { contains: keyword } }, // Tìm trong tên
+          { description: { contains: keyword } }, // Tìm trong mô tả
+        ],
+      },
+      orderBy: { id: 'desc' },
     });
   }
 
