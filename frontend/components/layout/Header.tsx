@@ -1,11 +1,12 @@
-// frontend/components/layout/Header.tsx  (CẬP NHẬT - thêm user menu)
+// frontend/components/layout/Header.tsx
 'use client';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react'; // Đã thêm lại useEffect
 import { Search, ShoppingCart, User, Camera, X, AlertCircle, LogOut, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/authContext';
+// Đã xóa import useCart vì không cần dùng Context nữa
 
 export default function Header() {
     const { user, logout, isLoggedIn } = useAuth();
@@ -16,8 +17,40 @@ export default function Header() {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [showUserMenu, setShowUserMenu] = useState(false);
+
+    // ✅ 1. SỬA LẠI: Khai báo state lưu số lượng giỏ hàng
+    const [cartCount, setCartCount] = useState(0);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
+
+    // ✅ 2. THÊM LẠI: Hàm lấy số lượng giỏ hàng từ API
+    const fetchCartCount = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const res = await axios.get('http://localhost:3050/cart', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setCartCount(res.data.totalCount || 0);
+        } catch (error) {
+            console.error("Không thể lấy số lượng giỏ hàng", error);
+        }
+    };
+
+    // ✅ 3. THÊM LẠI: Lắng nghe sự kiện để giật số lượng realtime
+    useEffect(() => {
+        fetchCartCount(); // Gọi lần đầu khi load trang
+
+        // Lắng nghe pháo sáng 'cartUpdated'
+        window.addEventListener('cartUpdated', fetchCartCount);
+
+        return () => {
+            window.removeEventListener('cartUpdated', fetchCartCount);
+        };
+    }, []);
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -82,9 +115,8 @@ export default function Header() {
     const handleTextSearch = (e: React.FormEvent) => {
         e.preventDefault();
         if (searchText.trim()) {
-            // Chuyển hướng sang trang /search kèm theo từ khóa
             router.push(`/search?q=${encodeURIComponent(searchText.trim())}`);
-            setShowDropdown(false); // Đóng dropdown nếu đang mở
+            setShowDropdown(false);
         }
     };
 
@@ -92,10 +124,8 @@ export default function Header() {
         <header className="bg-white shadow-sm sticky top-0 z-40">
             <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
 
-                {/* Logo */}
                 <Link href="/" className="text-xl font-bold text-blue-600 shrink-0">FASHION AI</Link>
 
-                {/* Search bar + Visual Search */}
                 <div className="flex-1 relative">
                     <form onSubmit={handleTextSearch}>
                         <div className="flex items-center bg-gray-100 rounded-full px-4 py-2 gap-2 border border-transparent focus-within:border-blue-400 focus-within:bg-white transition-all">
@@ -168,10 +198,15 @@ export default function Header() {
                     {/* Giỏ hàng */}
                     <Link href="/cart" className="text-gray-500 hover:text-blue-600 p-2 relative">
                         <ShoppingCart size={22} />
-                        <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">0</span>
+                        {/* Hiển thị số lượng giỏ hàng */}
+                        {cartCount > 0 && (
+                            <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                                {cartCount}
+                            </span>
+                        )}
                     </Link>
 
-                    {/* ✅ THÊM: User menu */}
+                    {/* User menu */}
                     {isLoggedIn ? (
                         <div className="relative">
                             <button

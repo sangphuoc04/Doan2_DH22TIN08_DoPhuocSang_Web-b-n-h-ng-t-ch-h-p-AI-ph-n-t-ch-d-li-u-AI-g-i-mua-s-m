@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '../context/authContext';
 import Header from '../components/layout/Header';
 import CategoryNav from '@/components/layout/CategoryNav';
+import { CartProvider } from '@/context/CartContext';
 
 const geist = Geist({ subsets: ['latin'] });
 
@@ -17,11 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="vi" suppressHydrationWarning>
       <body className={geist.className}>
         <AuthProvider>
-          <Header />
-          <CategoryNav />
-          {children}
+          <CartProvider>
+            <Header />
+            <CategoryNav />
+            {children}
+          </CartProvider>
         </AuthProvider>
       </body>
-    </html>
+    </html >
   );
 }

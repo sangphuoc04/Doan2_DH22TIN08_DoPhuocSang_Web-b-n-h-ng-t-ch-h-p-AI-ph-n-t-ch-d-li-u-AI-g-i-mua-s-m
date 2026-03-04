@@ -27,7 +27,6 @@ export default function LoginPage() {
             const res = await axios.post('http://localhost:3050/auth/login', { email, password });
             login(res.data.user, res.data.token);
 
-            // ✅ PHÂN QUYỀN: ADMIN → vào thẳng dashboard, USER → về trang chủ
             if (res.data.user.role === 'ADMIN') {
                 router.push('/admin');
             } else {

@@ -41,19 +41,36 @@ export default function HomePage() {
       .catch(() => showToast('error', 'Không thể tải sản phẩm. Hãy kiểm tra backend.'));
   }, []);
 
-  const handleBuy = async () => {
+  const handleAddToCart = async () => {
     if (!selectedProduct) return;
     setLoading(true);
+
     try {
-      await axios.post('http://localhost:3050/orders', {
-        productId: selectedProduct.id,
-        quantity: quantity,
-        totalAmount: selectedProduct.price * quantity
-      });
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        showToast('error', 'Bạn cần đăng nhập để thêm vào giỏ hàng!');
+        setLoading(false);
+        return;
+      }
+
+      await axios.post('http://localhost:3050/cart/add',
+        {
+          productId: selectedProduct.id,
+          quantity: quantity
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
       setSelectedProduct(null);
-      showToast('success', `Đặt hàng thành công!🎉🎉🎉`);
+      showToast('success', `Đã thêm ${selectedProduct.name} vào giỏ hàng! 🛒`);
+      window.dispatchEvent(new Event('cartUpdated'));
+
     } catch (error: any) {
-      const msg = error?.response?.data?.message || 'Đặt hàng thất bại, vui lòng thử lại.';
+      console.error(error);
+      const msg = error?.response?.data?.message || 'Có lỗi xảy ra khi thêm vào giỏ hàng.';
       showToast('error', msg);
     } finally {
       setLoading(false);
@@ -87,7 +104,6 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* BANNER */}
       <div className="bg-linear-to-r from-blue-500 to-purple-600 text-white py-12">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <h2 className="text-4xl font-bold mb-4">Thời trang xu hướng 2026</h2>
@@ -181,7 +197,7 @@ export default function HomePage() {
                 Hủy
               </button>
               <button
-                onClick={handleBuy}
+                onClick={handleAddToCart}
                 disabled={loading}
                 className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-lg shadow-blue-200 transition-all"
               >
@@ -190,7 +206,7 @@ export default function HomePage() {
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     Đang xử lý...
                   </span>
-                ) : 'CHỐT ĐƠN NGAY'}
+                ) : 'THÊM VÀO GIỎ HÀNG'}
               </button>
             </div>
           </div>
