@@ -4,7 +4,8 @@
 import React, { useEffect } from 'react';
 import {
     LayoutDashboard, Package, MessageSquare,
-    Users, LogOut
+    Users, LogOut,
+    CarTaxiFront
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -38,6 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: 'Quản lý Sản phẩm', href: '/admin/products', icon: Package },
         { name: 'Phân tích Đánh giá (AI)', href: '/admin/reviews', icon: MessageSquare },
         { name: 'Quản lý người dùng', href: '/admin/users', icon: Users },
+        { name: 'Phân tích Giỏ hàng (AI)', href: '/admin/cart-insights', icon: CarTaxiFront },
     ];
 
     const handleLogout = () => {

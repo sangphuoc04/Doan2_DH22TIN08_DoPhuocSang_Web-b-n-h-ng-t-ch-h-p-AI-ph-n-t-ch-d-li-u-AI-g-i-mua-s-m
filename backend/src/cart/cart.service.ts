@@ -25,13 +25,14 @@ export class CartService {
                 },
             });
 
+            let result;
             if (existingItem) {
-                return await prisma.cartItem.update({
+                result = await prisma.cartItem.update({
                     where: { id: existingItem.id },
                     data: { quantity: existingItem.quantity + quantity },
                 });
             } else {
-                return await prisma.cartItem.create({
+                result = await prisma.cartItem.create({
                     data: {
                         cartId: cart.id,
                         productId: productId,
@@ -39,6 +40,20 @@ export class CartService {
                     },
                 });
             }
+
+            // ==========================================
+            // BỔ SUNG: GHI LẠI HÀNH ĐỘNG CHO AI PHÂN TÍCH
+            // ==========================================
+            await prisma.userInteraction.create({
+                data: {
+                    userId: userId,
+                    productId: productId,
+                    action: 'ADD_TO_CART'
+                }
+            });
+
+            return result;
+
         } catch (error) {
             console.error("Lỗi Prisma khi thêm vào giỏ:", error);
             throw error;
@@ -79,12 +94,26 @@ export class CartService {
             }
 
             // Xóa sản phẩm khỏi giỏ
-            return await prisma.cartItem.deleteMany({
+            const result = await prisma.cartItem.deleteMany({
                 where: {
                     cartId: cart.id,
                     productId: productId,
                 },
             });
+
+            // ==========================================
+            // BỔ SUNG: GHI LẠI HÀNH ĐỘNG CHO AI PHÂN TÍCH
+            // ==========================================
+            await prisma.userInteraction.create({
+                data: {
+                    userId: userId,
+                    productId: productId,
+                    action: 'REMOVE_FROM_CART'
+                }
+            });
+
+            return result;
+
         } catch (error) {
             console.error("Lỗi Prisma khi xóa khỏi giỏ:", error);
             throw error;

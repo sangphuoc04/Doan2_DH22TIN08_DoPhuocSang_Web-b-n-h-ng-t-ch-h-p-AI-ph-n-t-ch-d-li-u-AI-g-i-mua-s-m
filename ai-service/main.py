@@ -2,6 +2,7 @@
 import mysql.connector
 from typing import List, Optional
 import requests
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
@@ -24,6 +25,13 @@ if not GOOGLE_API_KEY:
     raise ValueError("LỖI: Chưa tìm thấy GOOGLE_API_KEY trong file .env")
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Cho phép mọi domain gọi đến (Next.js localhost:3000)
+    allow_credentials=True,
+    allow_methods=["*"],  # Cho phép mọi method (GET, POST, PUT, DELETE...)
+    allow_headers=["*"],
+)
 
 # --- HÀM LẤY DỮ LIỆU TỪ MYSQL ---
 def get_products_context():
@@ -481,3 +489,65 @@ def visual_search(req: ImageSearchRequest):
         return {"status": "error", "message": str(e), "data": []}
 
 # === [KẾT THÚC THÊM MỚI 4] ===
+
+@app.get("/cart-insights")
+def cart_insights():
+    try:
+        conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
+        cursor = conn.cursor(dictionary=True)
+        
+        # Truy vấn đếm số lượng ADD_TO_CART và REMOVE_FROM_CART của từng sản phẩm
+        cursor.execute("""
+            SELECT 
+                p.id, 
+                p.name, 
+                p.price,
+                p.image,
+                SUM(CASE WHEN ui.action = 'ADD_TO_CART' THEN 1 ELSE 0 END) as adds_count,
+                SUM(CASE WHEN ui.action = 'REMOVE_FROM_CART' THEN 1 ELSE 0 END) as removes_count
+            FROM Product p
+            JOIN UserInteraction ui ON p.id = ui.productId
+            GROUP BY p.id
+        """)
+        cart_data = cursor.fetchall()
+        conn.close()
+
+        trending_products = []
+        flashsale_candidates = []
+
+        for item in cart_data:
+            adds = int(item['adds_count'])
+            removes = int(item['removes_count'])
+            total_interactions = adds + removes
+
+            if total_interactions == 0:
+                continue
+
+            # Tính tỷ lệ huỷ (Abandonment Rate)
+            abandon_rate = (removes / adds) * 100 if adds > 0 else 100
+
+            # Điều kiện xếp vào "Xu hướng" (Được thêm nhiều, tỷ lệ huỷ thấp)
+            if adds >= 5 and abandon_rate < 30:
+                item['reason'] = f"Được thêm {adds} lần, giữ lại giỏ hàng tốt."
+                trending_products.append(item)
+            
+            # Điều kiện xếp vào "Giá cao cần Flashsale" (Bị huỷ nhiều / Tỷ lệ huỷ cao)
+            elif removes >= 3 and abandon_rate >= 50:
+                item['abandon_rate'] = round(abandon_rate, 1)
+                item['reason'] = f"Tỷ lệ bỏ giỏ: {round(abandon_rate, 1)}% ({removes} lần xoá). Cần giảm giá!"
+                flashsale_candidates.append(item)
+
+        # Sắp xếp theo mức độ ưu tiên
+        trending_products = sorted(trending_products, key=lambda x: x['adds_count'], reverse=True)
+        flashsale_candidates = sorted(flashsale_candidates, key=lambda x: x['removes_count'], reverse=True)
+
+        return {
+            "status": "success",
+            "trending": trending_products[:10], # Lấy top 10
+            "flashsale_needed": flashsale_candidates[:10]
+        }
+
+    except Exception as e:
+        print(f"LỖI PHÂN TÍCH GIỎ HÀNG: {e}")
+        return {"status": "error", "message": str(e), "trending": [], "flashsale_needed": []}
+# === [KẾT THÚC THÊM MỚI 5] ===
