@@ -1,12 +1,11 @@
 // frontend/components/layout/Header.tsx
 'use client';
-import React, { useState, useRef, useEffect } from 'react'; // Đã thêm lại useEffect
+import React, { useState, useRef } from 'react'; // Đã bỏ useEffect vì không còn dùng
 import { Search, ShoppingCart, User, Camera, X, AlertCircle, LogOut, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/authContext';
-// Đã xóa import useCart vì không cần dùng Context nữa
 
 export default function Header() {
     const { user, logout, isLoggedIn } = useAuth();
@@ -18,39 +17,10 @@ export default function Header() {
     const [errorMsg, setErrorMsg] = useState('');
     const [showUserMenu, setShowUserMenu] = useState(false);
 
-    // ✅ 1. SỬA LẠI: Khai báo state lưu số lượng giỏ hàng
-    const [cartCount, setCartCount] = useState(0);
-
     const fileInputRef = useRef<HTMLInputElement>(null);
     const router = useRouter();
 
-    // ✅ 2. THÊM LẠI: Hàm lấy số lượng giỏ hàng từ API
-    const fetchCartCount = async () => {
-        try {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-
-            const res = await axios.get('http://localhost:3050/cart', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-
-            setCartCount(res.data.totalCount || 0);
-        } catch (error) {
-            console.error("Không thể lấy số lượng giỏ hàng", error);
-        }
-    };
-
-    // ✅ 3. THÊM LẠI: Lắng nghe sự kiện để giật số lượng realtime
-    useEffect(() => {
-        fetchCartCount(); // Gọi lần đầu khi load trang
-
-        // Lắng nghe pháo sáng 'cartUpdated'
-        window.addEventListener('cartUpdated', fetchCartCount);
-
-        return () => {
-            window.removeEventListener('cartUpdated', fetchCartCount);
-        };
-    }, []);
+    // Đã xóa state cartCount, hàm fetchCartCount và useEffect lắng nghe giỏ hàng
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -195,15 +165,10 @@ export default function Header() {
 
                 {/* Icons bên phải */}
                 <div className="flex items-center gap-2 shrink-0">
-                    {/* Giỏ hàng */}
+
+                    {/* Giỏ hàng (Đã bỏ con số báo notification) */}
                     <Link href="/cart" className="text-gray-500 hover:text-blue-600 p-2 relative">
                         <ShoppingCart size={22} />
-                        {/* Hiển thị số lượng giỏ hàng */}
-                        {cartCount > 0 && (
-                            <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                {cartCount}
-                            </span>
-                        )}
                     </Link>
 
                     {/* User menu */}

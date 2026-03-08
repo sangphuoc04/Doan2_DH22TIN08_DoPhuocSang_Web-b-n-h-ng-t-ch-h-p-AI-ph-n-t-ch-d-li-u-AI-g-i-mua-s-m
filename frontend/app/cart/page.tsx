@@ -1,11 +1,30 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Link from 'next/link';
+import { CheckCircle, AlertCircle, X } from 'lucide-react';
+
+type Toast = {
+    id: number;
+    type: 'success' | 'error';
+    message: string;
+};
 
 export default function CartPage() {
     const [cart, setCart] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [toasts, setToasts] = useState<Toast[]>([]);
+
+    // State lưu trữ ID sản phẩm đang trong trạng thái "chờ xác nhận xoá"
+    const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+
+    const showToast = useCallback((type: 'success' | 'error', message: string) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, type, message }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 3500);
+    }, []);
 
     useEffect(() => {
         const fetchCart = async () => {
@@ -23,18 +42,25 @@ export default function CartPage() {
                 setCart(res.data);
             } catch (error) {
                 console.error('Lỗi khi tải giỏ hàng', error);
+                showToast('error', 'Không thể tải giỏ hàng!');
             } finally {
                 setLoading(false);
             }
         };
 
         fetchCart();
-    }, []);
+    }, [showToast]);
 
-    const handleRemoveItem = async (productId: number) => {
-        const confirmDelete = window.confirm("Bạn có chắc chắn muốn bỏ sản phẩm này khỏi giỏ hàng?");
-        if (!confirmDelete) return;
+    const handleRemoveItem = async (productId: number, productName: string) => {
+        // Lần 1: Yêu cầu xác nhận
+        if (confirmingDeleteId !== productId) {
+            setConfirmingDeleteId(productId);
+            // Tự động huỷ trạng thái xác nhận sau 3 giây
+            setTimeout(() => setConfirmingDeleteId(null), 3000);
+            return;
+        }
 
+        // Lần 2: Tiến hành xoá
         try {
             const token = localStorage.getItem('token');
             await axios.delete(`http://localhost:3050/cart/${cart.userId}/product/${productId}`, {
@@ -45,9 +71,12 @@ export default function CartPage() {
                 ...prevCart,
                 items: prevCart.items.filter((item: any) => item.productId !== productId)
             }));
+            setConfirmingDeleteId(null);
+            showToast('success', `Đã xoá ${productName} khỏi giỏ hàng!`);
         } catch (error) {
             console.error('Lỗi khi xoá sản phẩm khỏi giỏ hàng', error);
-            alert('Có lỗi xảy ra khi huỷ sản phẩm!');
+            showToast('error', 'Có lỗi xảy ra khi huỷ sản phẩm!');
+            setConfirmingDeleteId(null);
         }
     };
 
@@ -57,13 +86,34 @@ export default function CartPage() {
 
     if (!cart || !cart.items || cart.items.length === 0) {
         return (
-            <div className="min-h-screen pt-32 pb-12 flex flex-col items-center justify-center">
-                <div className="text-6xl mb-6">🛒</div>
-                <h1 className="text-2xl font-bold mb-4 text-gray-800">Giỏ hàng của bạn đang trống</h1>
-                <p className="text-gray-500 mb-8">Hãy tìm thêm những sản phẩm tuyệt vời nhé!</p>
-                <Link href="/" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all">
-                    Tiếp tục mua sắm
-                </Link>
+            <div className="min-h-screen bg-gray-50">
+                {/* Khu vực chứa Toast Notifications */}
+                <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+                    {toasts.map(toast => (
+                        <div
+                            key={toast.id}
+                            className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-white text-sm font-medium
+                                min-w-75 max-w-100 pointer-events-auto
+                                animate-in slide-in-from-right-5 fade-in duration-300
+                                ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
+                        >
+                            {toast.type === 'success' ? <CheckCircle size={20} className="shrink-0" /> : <AlertCircle size={20} className="shrink-0" />}
+                            <span className="flex-1">{toast.message}</span>
+                            <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="shrink-0 opacity-70 hover:opacity-100 transition-opacity">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="pt-32 pb-12 flex flex-col items-center justify-center">
+                    <div className="text-6xl mb-6">🛒</div>
+                    <h1 className="text-2xl font-bold mb-4 text-gray-800">Giỏ hàng của bạn đang trống</h1>
+                    <p className="text-gray-500 mb-8">Hãy tìm thêm những sản phẩm tuyệt vời nhé!</p>
+                    <Link href="/" className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all">
+                        Tiếp tục mua sắm
+                    </Link>
+                </div>
             </div>
         );
     }
@@ -75,6 +125,25 @@ export default function CartPage() {
 
     return (
         <div className="min-h-screen bg-gray-50 pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+            {/* Khu vực chứa Toast Notifications */}
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+                {toasts.map(toast => (
+                    <div
+                        key={toast.id}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-white text-sm font-medium
+                            min-w-75 max-w-100 pointer-events-auto
+                            animate-in slide-in-from-right-5 fade-in duration-300
+                            ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
+                    >
+                        {toast.type === 'success' ? <CheckCircle size={20} className="shrink-0" /> : <AlertCircle size={20} className="shrink-0" />}
+                        <span className="flex-1">{toast.message}</span>
+                        <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="shrink-0 opacity-70 hover:opacity-100 transition-opacity">
+                            <X size={16} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+
             <div className="max-w-4xl mx-auto">
                 <h1 className="text-3xl font-extrabold text-gray-900 mb-8">Giỏ hàng của bạn</h1>
 
@@ -83,11 +152,14 @@ export default function CartPage() {
                         {cart.items.map((item: any) => (
                             <li key={item.id} className="p-6 flex items-center gap-6 hover:bg-gray-50 transition-colors relative">
                                 <button
-                                    onClick={() => handleRemoveItem(item.productId)}
-                                    className="absolute top-4 right-6 text-red-500 hover:text-red-700 font-semibold text-sm transition-all"
+                                    onClick={() => handleRemoveItem(item.productId, item.product.name)}
+                                    className={`absolute top-4 right-6 font-semibold text-sm transition-all px-3 py-1.5 rounded-md
+                                        ${confirmingDeleteId === item.productId
+                                            ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse'
+                                            : 'text-red-500 hover:bg-red-50'}`}
                                     title="Huỷ sản phẩm"
                                 >
-                                    ✕ Huỷ
+                                    {confirmingDeleteId === item.productId ? 'Xác nhận xoá?' : '✕ Huỷ'}
                                 </button>
 
                                 <div className="w-24 h-24 shrink-0 bg-gray-100 rounded-xl overflow-hidden mt-2">
