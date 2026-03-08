@@ -10,6 +10,7 @@ const VISUAL_SEARCH_TIMEOUT_MS = 32_000;
 
 @Injectable()
 export class ProductsService {
+
   constructor(private readonly httpService: HttpService) { }
 
   async findAll() {
@@ -17,6 +18,7 @@ export class ProductsService {
       orderBy: { id: 'desc' },
     });
   }
+
 
   async getCategories() {
     const categories = await prisma.product.findMany({
@@ -33,9 +35,38 @@ export class ProductsService {
     });
   }
 
+
+
+  // backend/src/products/products.service.ts
   async findOne(id: number) {
-    return prisma.product.findUnique({
-      where: { id },
+    return prisma.product.findUnique({  // Dùng `prisma` thay vì `this.prisma`
+      where: { id: Number(id) }, // Đảm bảo id được chuyển thành dạng số
+      include: {
+        reviews: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+              }
+            }
+          },
+          orderBy: {
+            createdAt: 'desc'
+          }
+        }
+      }
+    });
+  }
+
+  async addReview(productId: number, userId: number, rating: number, content: string) {
+    return prisma.review.create({
+      data: {
+        rating,
+        content, // Lúc này Frontend và Database đều dùng chung chữ 'content'
+        productId,
+        userId,
+      },
     });
   }
 

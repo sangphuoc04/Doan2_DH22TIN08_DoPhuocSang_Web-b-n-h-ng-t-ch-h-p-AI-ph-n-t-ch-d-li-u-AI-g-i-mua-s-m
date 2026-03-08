@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseIntPipe, Req, UseGuards } from '@nestjs/common';
 import { ProductsService } from './products.service';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('products')
 export class ProductsController {
@@ -52,5 +53,17 @@ export class ProductsController {
     console.log('>>> [NESTJS] Đang chuyển phát nhanh sang Python (Cổng 8000)...');
 
     return this.productsService.visualSearch(body.image_base64);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/reviews')
+  async addReview(
+    @Param('id') productId: string,
+    @Body() body: { rating: number; content: string }, // Lấy 'content' từ Frontend gửi lên
+    @Req() req: any
+  ) {
+    const userId = req.user.sub;
+    // Truyền body.content xuống service
+    return this.productsService.addReview(+productId, userId, body.rating, body.content);
   }
 }

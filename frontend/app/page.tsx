@@ -6,6 +6,7 @@ import axios from 'axios';
 import { ShoppingCart, TrendingUp, X, CheckCircle, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
+
 type Product = {
   id: number;
   name: string;
@@ -122,17 +123,25 @@ export default function HomePage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {products.map(product => (
             <div key={product.id} className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-gray-100 group">
-              <div className="aspect-square overflow-hidden bg-gray-100">
-                <img
-                  src={product.image}
-                  alt={product.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.png'; }}
-                />
-              </div>
+
+              {/* BỌC THẺ LINK Ở ĐÂY VÀ CHỈ Ở PHẦN HÌNH ẢNH */}
+              <Link href={`/product/${product.id}`}>
+                <div className="aspect-square overflow-hidden bg-gray-100 cursor-pointer">
+                  <img
+                    src={product.image}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.png'; }}
+                  />
+                </div>
+              </Link>
+
               <div className="p-4">
                 <span className="text-xs text-blue-500 font-medium bg-blue-50 px-2 py-0.5 rounded-full">{product.category}</span>
+
+                {/* Nếu bạn muốn nhấn vào tên sản phẩm cũng chuyển trang thì bọc Link tương tự */}
                 <h4 className="font-semibold text-gray-800 mt-2 line-clamp-2">{product.name}</h4>
+
                 <p className="text-red-500 font-bold mt-1">
                   {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}
                 </p>
