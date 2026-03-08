@@ -14,22 +14,26 @@ import { useAuth } from '../../context/authContext';
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const { user, isLoggedIn, logout } = useAuth();
+    // Lấy thêm biến isLoading từ Context
+    const { user, isLoggedIn, isLoading, logout } = useAuth();
 
     useEffect(() => {
+        // NẾU ĐANG LOAD TỪ LOCALSTORAGE THÌ KHÔNG LÀM GÌ CẢ
+        if (isLoading) return;
+
+        // Nếu load xong rồi mà chưa login, hoặc không phải Admin thì đuổi đi
         if (!isLoggedIn) {
             router.replace('/login');
-            return;
-        }
-        if (user?.role !== 'ADMIN') {
+        } else if (user?.role !== 'ADMIN') {
             router.replace('/');
         }
-    }, [isLoggedIn, user, router]);
+    }, [isLoggedIn, user, isLoading, router]);
 
-    if (!isLoggedIn || user?.role !== 'ADMIN') {
+    // Trong lúc đang load dữ liệu hoặc chưa đủ điều kiện, hiện loading spinner
+    if (isLoading || !isLoggedIn || user?.role !== 'ADMIN') {
         return (
             <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
@@ -55,7 +59,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <h1 className="text-2xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
                         Admin AI
                     </h1>
-                    {/* ✅ THÊM: hiện email admin */}
                     <p className="text-xs text-slate-400 mt-1 truncate">{user?.email}</p>
                 </div>
 
@@ -79,7 +82,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
 
                 <div className="p-4 border-t border-slate-700">
-                    {/* ✅ FIX: nút logout thật sự gọi logout() */}
                     <button
                         onClick={handleLogout}
                         className="flex items-center gap-3 w-full px-4 py-3 text-red-400 hover:bg-slate-800 rounded-xl transition-colors"

@@ -1,5 +1,4 @@
 // frontend/context/authContext.tsx
-// Context toàn cục quản lý trạng thái đăng nhập - đặt file này vào frontend/context/
 'use client';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
@@ -16,19 +15,21 @@ type AuthContextType = {
     login: (user: User, token: string) => void;
     logout: () => void;
     isLoggedIn: boolean;
+    isLoading: boolean; // <--- THÊM DÒNG NÀY
 };
 
 const AuthContext = createContext<AuthContextType>({
     user: null, token: null,
     login: () => { }, logout: () => { },
     isLoggedIn: false,
+    isLoading: true, // <--- THÊM DÒNG NÀY
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true); // <--- THÊM STATE NÀY
 
-    // Khi app load, khôi phục session từ localStorage
     useEffect(() => {
         const savedToken = localStorage.getItem('token');
         const savedUser = localStorage.getItem('user');
@@ -36,6 +37,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setToken(savedToken);
             setUser(JSON.parse(savedUser));
         }
+        // Sau khi kiểm tra xong (dù có hay không), phải đánh dấu là đã load xong
+        setIsLoading(false);
     }, []);
 
     const login = (user: User, token: string) => {
@@ -53,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, isLoggedIn: !!user }}>
+        <AuthContext.Provider value={{ user, token, login, logout, isLoggedIn: !!user, isLoading }}>
             {children}
         </AuthContext.Provider>
     );

@@ -1,137 +1,135 @@
-// prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
-import { faker } from '@faker-js/faker/locale/vi'; // Dùng tiếng Việt cho chuẩn
+import { faker } from '@faker-js/faker/locale/vi';
 
 const prisma = new PrismaClient();
 
 async function main() {
-    console.log('👗 Bắt đầu tạo dữ liệu Shop Thời Trang...');
-
-    // 1. Xóa sạch dữ liệu cũ (Reset)
+    console.log('⏳ Đang xóa sạch dữ liệu cũ (đúng thứ tự để không lỗi khóa ngoại)...');
+    await prisma.userInteraction.deleteMany();
+    await prisma.cartItem.deleteMany();
+    await prisma.cart.deleteMany();
     await prisma.review.deleteMany();
     await prisma.orderItem.deleteMany();
     await prisma.order.deleteMany();
     await prisma.product.deleteMany();
     await prisma.user.deleteMany();
 
-    // 2. Tạo User
-    console.log('Creating users...');
+    console.log('👤 Đang tạo danh sách 30 Users...');
     const userIds: number[] = [];
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 30; i++) {
         const user = await prisma.user.create({
             data: {
                 email: faker.internet.email(),
                 password: 'hashed_password_123',
                 fullName: faker.person.fullName(),
-                role: 'USER',
+                phone: faker.phone.number(),
+                address: faker.location.streetAddress(),
+                role: i === 0 ? 'ADMIN' : 'USER', // User đầu tiên làm Admin
             },
         });
         userIds.push(user.id);
     }
 
-    // 3. Tạo Sản phẩm Thời trang (Quan trọng)
-    console.log('Creating fashion products...');
-    const productIds: { id: number; price: number }[] = [];
+    console.log('👗 Đang tạo 20 Sản phẩm Thời trang...');
+    const productIds: number[] = [];
+    const productsData: any[] = []; // THÊM KIỂU ANY ĐỂ FIX LỖI
+    const clothingTypes = ['Áo Thun', 'Áo Sơ Mi', 'Áo Khoác', 'Quần Jeans', 'Quần Short', 'Chân Váy', 'Đầm'];
+    const adjectives = ['Hàn Quốc', 'Oversize', 'Slimfit', 'Vintage', 'Cao Cấp', 'Basic'];
 
-    // Danh sách từ khóa để ghép tên cho hay
-    const clothingTypes = [
-        'Áo Thun', 'Áo Sơ Mi', 'Áo Hoodie', 'Áo Khoác',
-        'Quần Jeans', 'Quần Short', 'Quần Kaki',
-        'Váy Dạ Hội', 'Chân Váy', 'Đầm Maxi'
-    ];
-    const adjectives = ['Basic', 'Hàn Quốc', 'Oversize', 'Slimfit', 'Vintage', 'Cao Cấp'];
-    const materials = ['Cotton 100%', 'Vải Lanh', 'Kaki dày dặn', 'Lụa mềm', 'Denim'];
-
-    for (let i = 0; i < 50; i++) {
-        // Random tên sản phẩm: "Áo Thun" + "Hàn Quốc"
+    for (let i = 0; i < 20; i++) {
         const type = clothingTypes[Math.floor(Math.random() * clothingTypes.length)];
         const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-        const material = materials[Math.floor(Math.random() * materials.length)];
-
-        const name = `${type} ${adj} ${faker.commerce.productName().split(' ')[0]}`; // Thêm tí random cho đỡ trùng
-
-        const price = parseFloat(faker.commerce.price({ min: 150000, max: 1500000 })); // Giá từ 150k - 1tr5
-
-        // Tạo mô tả có Size và Màu để Chatbot tư vấn
-        const description = `
-      Mẫu ${name} thiết kế mới nhất mùa này.
-      - Chất liệu: ${material} thoáng mát, thấm hút mồ hôi.
-      - Size: Đủ size S, M, L, XL cho người từ 45kg đến 85kg.
-      - Màu sắc: Đen, Trắng, Be, Xanh Navy.
-      - Phù hợp đi học, đi làm hoặc đi chơi. Cam kết hàng chính hãng.
-    `;
+        const name = `${type} ${adj} ${faker.commerce.productMaterial()}`;
+        const price = faker.number.int({ min: 15, max: 150 }) * 10000; // 150k - 1.5M
 
         const product = await prisma.product.create({
             data: {
                 name: name,
-                description: description.trim(),
+                description: `Mẫu ${name} thiết kế mới nhất. Chất vải cực đẹp, thấm hút mồ hôi. Đủ size S, M, L, XL.`,
                 price: price,
-                costPrice: price * 0.6, // Lãi 40%
-                stock: faker.number.int({ min: 20, max: 200 }),
-                // Lưu Category dựa trên tên
-                category: type.includes('Áo') ? 'Áo' : (type.includes('Quần') ? 'Quần' : 'Váy/Đầm'),
-                // Ảnh placeholder thời trang
-                image: `https://loremflickr.com/320/240/clothing,fashion?lock=${i}`,
+                costPrice: price * 0.6, // Lãi 40% (Đúng với schema của bạn)
+                stock: faker.number.int({ min: 10, max: 100 }),
+                category: type.includes('Áo') ? 'Áo' : (type.includes('Quần') ? 'Quần' : 'Váy'),
+                image: `https://loremflickr.com/400/400/clothing?lock=${i}`,
             },
         });
-        productIds.push({ id: product.id, price: product.price });
+        productIds.push(product.id);
+        productsData.push(product);
     }
 
-    // 4. Tạo Đơn hàng (Logic Mùa vụ cho AI Dự báo)
-    console.log('Creating fashion orders...');
-    for (let i = 0; i < 1000; i++) {
-        const randomUserId = userIds[Math.floor(Math.random() * userIds.length)];
-        const randomProduct = productIds[Math.floor(Math.random() * productIds.length)];
-        const quantity = faker.number.int({ min: 1, max: 3 }); // Quần áo thường mua ít cái/lần
-
-        const pastDate = faker.date.recent({ days: 365 });
-        const month = pastDate.getMonth() + 1;
-
-        // Giả lập: Mùa Tết (tháng 12, 1) và Mùa Hè (tháng 6, 7) bán chạy
-        const isPeakSeason = [12, 1, 6, 7].includes(month);
-
-        // Nếu là mùa cao điểm thì tăng tỷ lệ tạo đơn hàng
-        if (isPeakSeason || Math.random() > 0.6) {
-            await prisma.order.create({
-                data: {
-                    userId: randomUserId,
-                    totalAmount: randomProduct.price * quantity,
-                    status: 'COMPLETED',
-                    createdAt: pastDate,
-                    items: {
-                        create: {
-                            productId: randomProduct.id,
-                            quantity: quantity,
-                            price: randomProduct.price
-                        }
-                    }
-                },
-            });
-        }
-    }
-
-    // 5. Tạo Review
-    console.log('Creating reviews...');
-    const fashionComments = [
-        "Vải đẹp, mặc mát.", "Form hơi rộng so với size.", "Giao hàng nhanh, đóng gói đẹp.",
-        "Màu ở ngoài hơi tối hơn ảnh.", "Sẽ ủng hộ shop dài dài.", "Chất vải hơi mỏng."
-    ];
-
+    console.log('📦 Đang tạo Đơn hàng (Cho AI Dự báo doanh thu & Phân cụm RFM)...');
     for (let i = 0; i < 300; i++) {
         const randomUserId = userIds[Math.floor(Math.random() * userIds.length)];
-        const randomProduct = productIds[Math.floor(Math.random() * productIds.length)];
+        const randomProduct = productsData[Math.floor(Math.random() * productsData.length)];
+        const quantity = faker.number.int({ min: 1, max: 3 });
+
+        const pastDate = faker.date.past({ years: 1 });
+
+        await prisma.order.create({
+            data: {
+                userId: randomUserId,
+                totalAmount: randomProduct.price * quantity,
+                status: 'COMPLETED',
+                createdAt: pastDate,
+                shippingAddress: faker.location.streetAddress(),
+                phoneNumber: faker.phone.number(),
+                paymentMethod: 'COD',
+                items: {
+                    create: {
+                        productId: randomProduct.id,
+                        quantity: quantity,
+                        price: randomProduct.price
+                    }
+                }
+            },
+        });
+    }
+
+    console.log('⭐ Đang tạo Đánh giá (Cho AI Phân tích cảm xúc Sentiment)...');
+    const positiveReviews = ["Vải xịn, mặc rất mát", "Giao hàng siêu nhanh", "Form đẹp, sẽ ủng hộ shop tiếp", "Đáng đồng tiền bát gạo"];
+    const negativeReviews = ["Chất vải quá mỏng", "Giao sai màu", "Mặc bị nóng, không như quảng cáo", "Form bị lỗi, chỉ may lởm chởm"];
+
+    const badProductId = productIds[0];
+
+    for (let i = 0; i < 100; i++) {
+        const isBad = Math.random() < 0.2; // 20% là review xấu
+        const pId = isBad ? badProductId : productIds[Math.floor(Math.random() * productIds.length)];
+        const content = isBad
+            ? negativeReviews[Math.floor(Math.random() * negativeReviews.length)]
+            : positiveReviews[Math.floor(Math.random() * positiveReviews.length)];
 
         await prisma.review.create({
             data: {
-                userId: randomUserId,
-                productId: randomProduct.id,
-                content: fashionComments[Math.floor(Math.random() * fashionComments.length)],
-                rating: faker.number.int({ min: 3, max: 5 })
+                userId: userIds[Math.floor(Math.random() * userIds.length)],
+                productId: pId,
+                content: content,
+                rating: isBad ? faker.number.int({ min: 1, max: 2 }) : faker.number.int({ min: 4, max: 5 }),
             }
         });
     }
 
-    console.log('✅ Đã tạo xong Shop Thời Trang! Database sạch đẹp.');
+    console.log('🛒 Đang tạo Lịch sử Giỏ hàng (Cho AI Phân tích Xu hướng & Flashsale)...');
+    const trendingProd1 = productIds[1];
+    const trendingProd2 = productIds[2];
+    const flashsaleProd1 = productIds[3];
+
+    const mockInteractions: any[] = []; // THÊM KIỂU ANY ĐỂ FIX LỖI
+
+    for (let i = 0; i < 25; i++) {
+        mockInteractions.push({ userId: userIds[i % userIds.length], productId: trendingProd1, action: 'ADD_TO_CART' });
+        mockInteractions.push({ userId: userIds[i % userIds.length], productId: trendingProd2, action: 'ADD_TO_CART' });
+    }
+    mockInteractions.push({ userId: userIds[0], productId: trendingProd1, action: 'REMOVE_FROM_CART' });
+
+    for (let i = 0; i < 15; i++) {
+        mockInteractions.push({ userId: userIds[i % userIds.length], productId: flashsaleProd1, action: 'ADD_TO_CART' });
+        mockInteractions.push({ userId: userIds[i % userIds.length], productId: flashsaleProd1, action: 'REMOVE_FROM_CART' });
+        mockInteractions.push({ userId: userIds[i % userIds.length], productId: flashsaleProd1, action: 'REMOVE_FROM_CART' });
+    }
+
+    await prisma.userInteraction.createMany({ data: mockInteractions });
+
+    console.log('✅ SEED HOÀN TẤT! Dữ liệu đã chuẩn bị sẵn sàng cho tất cả AI.');
 }
 
 main()

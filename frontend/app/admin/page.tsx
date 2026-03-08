@@ -156,7 +156,7 @@ export default function AdminDashboard() {
                             <Calendar size={32} />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-blue-800">Gợi ý Mùa vụ</h3>
+                            <h3 className="text-lg font-bold text-blue-800">Gợi ý nhập hàng theo Mùa</h3>
                             <p className="text-gray-700 mt-2 font-medium">{analysis?.season_tip}</p>
                         </div>
                     </div>
@@ -168,7 +168,6 @@ export default function AdminDashboard() {
                 <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-112.5">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                         <TrendingUp size={20} className="text-blue-500" /> Biểu đồ Doanh thu & Dự báo
-                        {/* ✅ THÊM: dot nhấp nháy khi đang refresh */}
                         {isRefreshing && (
                             <span className="ml-auto flex items-center gap-1 text-xs text-blue-500 font-normal">
                                 <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
