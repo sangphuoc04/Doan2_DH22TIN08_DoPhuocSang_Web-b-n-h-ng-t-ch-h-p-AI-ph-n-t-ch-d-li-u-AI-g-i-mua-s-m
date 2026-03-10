@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, MapPin, Phone, Mail, Clock, Bot, User } from 'lucide-react';
 import axios from 'axios';
+import { useAuth } from '@/context/authContext';
 
 type Message = {
     id: number;
@@ -12,8 +13,12 @@ type Message = {
 };
 
 export default function ContactPage() {
+    // ✅ Lấy token và trạng thái load từ context
+    const { token, isLoading: isAuthLoading } = useAuth();
+
     const [messages, setMessages] = useState<Message[]>([
-        { id: 1, role: 'bot', content: 'Chào bạn! Mình là AI tư vấn thời trang. Bạn muốn tìm quần áo đi chơi hay đi làm ạ?' }
+        // Đổi id: 1 thành id: 0
+        { id: 0, role: 'bot', content: 'Chào bạn! Mình là AI tư vấn thời trang. Bạn muốn tìm quần áo đi chơi hay đi làm ạ?' }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -24,22 +29,54 @@ export default function ContactPage() {
     };
     useEffect(scrollToBottom, [messages]);
 
+    // ✅ Tự động tải lịch sử khi đã có token
+    useEffect(() => {
+        const fetchHistory = async () => {
+            // Đợi authContext load xong và phải có token
+            if (isAuthLoading || !token) return;
+
+            try {
+                const res = await axios.get('http://localhost:3050/chat/history', {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                if (res.data && res.data.length > 0) {
+                    const loadedMessages = res.data.map((msg: any) => ({
+                        id: msg.id,
+                        role: msg.sender.toLowerCase() === 'user' ? 'user' : 'bot',
+                        content: msg.message
+                    }));
+
+                    setMessages([
+                        { id: 0, role: 'bot', content: 'Chào bạn! Mình là AI tư vấn thời trang. Bạn muốn tìm quần áo đi chơi hay đi làm ạ?' },
+                        ...loadedMessages
+                    ]);
+                }
+            } catch (error) {
+                console.error(">>> Lỗi lấy lịch sử chat:", error);
+            }
+        };
+
+        fetchHistory();
+    }, [token, isAuthLoading]); // Phụ thuộc vào token
+
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
-        const userMsg: Message = { id: Date.now(), role: 'user', content: input.trim() };
+        if (!token) {
+            alert('Vui lòng đăng nhập để chat với AI!');
+            return;
+        }
 
-        // ✅ FIX: Lấy messages HIỆN TẠI trước khi setMessages (tránh closure stale)
+        const userMsg: Message = { id: Date.now(), role: 'user', content: input.trim() };
         const currentMessages = [...messages, userMsg];
         setMessages(currentMessages);
         setInput('');
         setIsLoading(true);
 
         try {
-            // ✅ THÊM: Gửi kèm history (6 tin nhắn gần nhất, bỏ tin nhắn đầu tiên mặc định)
-            // Chuyển đổi role 'bot' → 'model' cho đúng format Gemini
             const history = currentMessages
-                .slice(-7, -1) // 6 tin nhắn trước tin nhắn vừa gửi
+                .slice(-7, -1)
                 .map(m => ({
                     role: m.role === 'bot' ? 'model' : 'user',
                     content: m.content
@@ -47,9 +84,10 @@ export default function ContactPage() {
 
             const response = await axios.post('http://localhost:3050/chat', {
                 message: userMsg.content,
-                history: history, // ✅ THÊM: truyền history
+                history: history,
             }, {
-                timeout: 20000 // ✅ THÊM: timeout 20 giây
+                headers: { Authorization: `Bearer ${token}` }, // ✅ Gửi token đi
+                timeout: 20000
             });
 
             const botMsg: Message = {
@@ -61,11 +99,10 @@ export default function ContactPage() {
 
         } catch (error: any) {
             let errContent = 'Lỗi kết nối! Hãy chắc chắn Backend đang chạy.';
-            if (error.code === 'ECONNABORTED') {
-                errContent = 'AI phản hồi quá lâu, vui lòng thử lại nhé!';
-            }
-            const errorMsg: Message = { id: Date.now(), role: 'bot', content: errContent };
-            setMessages(prev => [...prev, errorMsg]);
+            if (error.response?.status === 401) errContent = 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại.';
+            else if (error.code === 'ECONNABORTED') errContent = 'AI phản hồi quá lâu, vui lòng thử lại nhé!';
+
+            setMessages(prev => [...prev, { id: Date.now(), role: 'bot', content: errContent }]);
         } finally {
             setIsLoading(false);
         }

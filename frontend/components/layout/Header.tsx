@@ -16,9 +16,9 @@ export default function Header() {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [showUserMenu, setShowUserMenu] = useState(false);
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [searchQuery, setSearchQuery] = useState('');
     const router = useRouter();
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Đã xóa state cartCount, hàm fetchCartCount và useEffect lắng nghe giỏ hàng
 
@@ -89,6 +89,13 @@ export default function Header() {
             setShowDropdown(false);
         }
     };
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault(); // Ngăn chặn load lại trang mặc định của form
+        if (searchQuery.trim()) {
+            // Chuyển hướng sang trang search kèm theo query string
+            router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        }
+    };
 
     return (
         <header className="bg-white shadow-sm sticky top-0 z-40">
@@ -96,23 +103,23 @@ export default function Header() {
 
                 <Link href="/" className="text-xl font-bold text-blue-600 shrink-0">FASHION AI</Link>
 
-                <div className="flex-1 relative">
-                    <form onSubmit={handleTextSearch}>
-                        <div className="flex items-center bg-gray-100 rounded-full px-4 py-2 gap-2 border border-transparent focus-within:border-blue-400 focus-within:bg-white transition-all">
-                            <Search size={18} className="text-gray-400 shrink-0" />
-                            <input
-                                type="text"
-                                value={searchText}
-                                onChange={e => setSearchText(e.target.value)}
-                                placeholder="Tìm kiếm sản phẩm..."
-                                className="flex-1 bg-transparent focus:outline-none text-gray-700 text-sm"
-                            />
-                            <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleImageUpload} />
-                            <button type="button" onClick={() => fileInputRef.current?.click()}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors" title="Tìm bằng hình ảnh">
-                                <Camera size={18} />
-                            </button>
-                        </div>
+                <div className="flex-1 max-w-2xl mx-8">
+                    {/* ✅ Đổi div bọc ngoài thành form để hỗ trợ phím Enter */}
+                    <form onSubmit={handleSearch} className="relative group">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm sản phẩm, xu hướng..."
+                            value={searchQuery} // ✅ Gắn state
+                            onChange={(e) => setSearchQuery(e.target.value)} // ✅ Cập nhật state khi gõ
+                            className="w-full px-4 py-2.5 pl-11 bg-gray-100/80 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 outline-none"
+                        />
+                        {/* ✅ Đổi icon thành button type="submit" */}
+                        <button
+                            type="submit"
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"
+                        >
+                            <Search size={18} />
+                        </button>
                     </form>
 
                     {/* Dropdown Visual Search */}
