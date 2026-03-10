@@ -193,7 +193,10 @@ export default function CartPage() {
                             </p>
                         </div>
 
-                        <button className="w-full sm:w-auto px-10 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg transition-transform active:scale-95">
+                        <button
+                            onClick={() => window.location.href = '/checkout'}
+                            className="w-full sm:w-auto px-10 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-xl shadow-lg transition-transform active:scale-95"
+                        >
                             TIẾN HÀNH ĐẶT HÀNG
                         </button>
                     </div>

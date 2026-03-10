@@ -44,13 +44,19 @@ export class CartService {
             // ==========================================
             // BỔ SUNG: GHI LẠI HÀNH ĐỘNG CHO AI PHÂN TÍCH
             // ==========================================
-            await prisma.userInteraction.create({
-                data: {
-                    userId: userId,
-                    productId: productId,
-                    action: 'ADD_TO_CART'
-                }
+            const userExists = await prisma.user.findUnique({
+                where: { id: userId }
             });
+
+            if (userExists) {
+                await prisma.userInteraction.create({
+                    data: {
+                        userId: userId,
+                        productId: productId,
+                        action: 'ADD_TO_CART',
+                    },
+                });
+            }
 
             return result;
 
@@ -72,13 +78,16 @@ export class CartService {
             }
         });
 
-        if (!cart) return { items: [], totalCount: 0 };
+        if (!cart) return { items: [], totalCount: 0, totalPrice: 0 };
 
         const totalCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
 
+        const totalPrice = cart.items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+
         return {
             ...cart,
-            totalCount
+            totalCount,
+            totalPrice
         };
     }
 
