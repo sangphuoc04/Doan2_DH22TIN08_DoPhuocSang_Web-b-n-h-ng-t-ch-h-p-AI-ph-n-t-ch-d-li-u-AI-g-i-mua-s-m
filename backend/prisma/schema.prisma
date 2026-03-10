@@ -18,6 +18,10 @@ model User {
   orders       Order[]
   reviews      Review[]
   interactions UserInteraction[] // BỔ SUNG: Quan hệ với bảng tương tác (Dùng cho AI)
+  
+  // BẠN THÊM DÒNG NÀY VÀO ĐÂY NHÉ:
+  chatMessages ChatMessage[] 
+
   createdAt    DateTime @default(now())
 }
 
@@ -64,6 +68,14 @@ model OrderItem {
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int
   price     Float
+}
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sender    String   // Lưu giá trị: "USER" hoặc "AI"
+  message   String   @db.Text
+  createdAt DateTime @default(now())
 }
 
 model Review {

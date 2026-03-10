@@ -2,7 +2,6 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { ChatService } from './chat.service';
 
-// ✅ THÊM: định nghĩa type cho history item
 type HistoryItem = {
   role: 'user' | 'model';
   content: string;
@@ -15,7 +14,7 @@ export class ChatController {
   @Post()
   sendMessage(
     @Body('message') message: string,
-    @Body('history') history: HistoryItem[] = [], // ✅ THÊM: nhận history, mặc định []
+    @Body('history') history: HistoryItem[] = [],
   ) {
     return this.chatService.sendMessage(message, history);
   }
