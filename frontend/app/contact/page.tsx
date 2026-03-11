@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, MapPin, Phone, Mail, Clock, Bot, User } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '@/context/authContext';
+import ReactMarkdown from 'react-markdown';
 
 type Message = {
     id: number;
@@ -173,13 +174,46 @@ export default function ContactPage() {
                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-green-500 text-white'}`}>
                                         {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                                     </div>
-                                    <div className={`p-4 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                                    <div className={`p-4 text-sm leading-relaxed shadow-sm overflow-hidden ${msg.role === 'user'
                                         ? 'bg-blue-600 text-white rounded-2xl rounded-tr-none'
                                         : 'bg-white border border-gray-200 text-gray-800 rounded-2xl rounded-tl-none'
                                         }`}>
-                                        {msg.content.split('\n').map((line, i) => (
-                                            <p key={i} className={`${i > 0 ? 'mt-1' : ''}`}>{line}</p>
-                                        ))}
+
+                                        {/* TÍCH HỢP REACT MARKDOWN VÀO ĐÂY */}
+                                        {msg.role === 'bot' ? (
+                                            <div className="prose prose-sm max-w-none">
+                                                <ReactMarkdown
+                                                    components={{
+                                                        // Tuỳ chỉnh thẻ img để hiển thị ảnh sản phẩm đẹp hơn
+                                                        img: ({ node, ...props }) => (
+                                                            <img
+                                                                className="rounded-lg border border-gray-200 shadow-sm max-w-full h-auto my-2"
+                                                                alt={props.alt || "Product image"}
+                                                                {...props}
+                                                            />
+                                                        ),
+                                                        // Tuỳ chỉnh thẻ link (a) để bấm được chuyển trang
+                                                        a: ({ node, ...props }) => (
+                                                            <a
+                                                                className="text-blue-600 hover:text-blue-800 font-semibold underline"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                {...props}
+                                                            />
+                                                        ),
+                                                        // Khoảng cách giữa các đoạn văn
+                                                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />
+                                                    }}
+                                                >
+                                                    {msg.content}
+                                                </ReactMarkdown>
+                                            </div>
+                                        ) : (
+                                            msg.content.split('\n').map((line, i) => (
+                                                <p key={i} className={`${i > 0 ? 'mt-1' : ''}`}>{line}</p>
+                                            ))
+                                        )}
+
                                     </div>
                                 </div>
                             </div>

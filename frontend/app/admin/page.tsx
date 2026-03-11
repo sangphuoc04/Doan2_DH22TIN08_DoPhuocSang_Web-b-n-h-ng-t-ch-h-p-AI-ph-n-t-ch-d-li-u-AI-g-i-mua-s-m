@@ -163,7 +163,6 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            {/* 2. BIỂU ĐỒ & TOP SẢN PHẨM */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-112.5">
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2">

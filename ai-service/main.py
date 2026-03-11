@@ -1,4 +1,10 @@
 # ai_service/main.py
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import mysql.connector
 from typing import List, Optional
 import requests
@@ -38,12 +44,17 @@ def get_products_context():
     try:
         conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT name, price, description, stock FROM Product")
+        
+        # Bổ sung lấy id và image từ Database
+        cursor.execute("SELECT id, name, price, description, stock, image FROM Product")
         products = cursor.fetchall()
         conn.close()
+        
         text = "DANH SÁCH SẢN PHẨM TRONG KHO:\n"
         for p in products:
-            text += f"- {p['name']} (Giá: {p['price']} VND, Kho: {p['stock']}). Chi tiết: {p['description']}\n"
+            img_url = p['image'] if p['image'] else ''
+            # Cung cấp cho AI biết ID và Đường dẫn ảnh
+            text += f"- ID: {p['id']} | Tên: {p['name']} | Giá: {p['price']} VND | Kho: {p['stock']} | Ảnh: {img_url} | Chi tiết: {p['description']}\n"
         return text
     except Exception:
         return ""
@@ -64,6 +75,11 @@ async def chat_endpoint(req: ChatRequest):
 Dựa trên danh sách sản phẩm sau để tư vấn khách hàng, trả lời ngắn gọn và tự nhiên:
 
 {context}
+QUAN TRỌNG: Khi bạn gợi ý một sản phẩm cụ thể cho khách, BẮT BUỘC phải kèm theo hình ảnh sản phẩm đó bằng cú pháp Markdown và link dẫn đến trang chi tiết.
+Ví dụ định dạng bạn phải trả về:
+"Tôi thấy chiếc áo này rất hợp với bạn:
+![Tên sản phẩm](Đường_dẫn_Ảnh_Của_Sản_Phẩm)
+[👉 Nhấn vào đây để xem chi tiết](/product/ID_Sản_phẩm)"
 
 Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy thành thật nói không có hàng.
 """
@@ -116,11 +132,12 @@ Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy 
 # --- API 2: DỰ BÁO DOANH THU & TOP BÁN CHẠY ---
 @app.get("/predict-revenue")
 def predict_revenue():
+    conn = None
     try:
         conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
         cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT createdAt, totalAmount FROM `Order` WHERE status = 'COMPLETED'")
+        cursor.execute("SELECT createdAt, totalAmount FROM `Order` WHERE status = 'COMPLETED' OR paymentStatus = 'PAID'")
         order_rows = cursor.fetchall()
 
         if not order_rows:
@@ -219,7 +236,9 @@ def predict_revenue():
     except Exception as e:
         print(f"LỖI PREDICT REVENUE: {e}")
         return {"error": str(e), "data": [], "analysis": {}}
-
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
 # === [BẮT ĐẦU THÊM MỚI 2] API 3: PHÂN KHÚC KHÁCH HÀNG BẰNG K-MEANS ===
 @app.get("/customer-segments")
 def customer_segments():
@@ -270,7 +289,6 @@ def customer_segments():
             label_map[sorted_clusters[2]] = "Khách hàng Thường xuyên"
             label_map[sorted_clusters[3]] = "Nguy cơ rời bỏ"
         else:
-            # Fallback nếu số user quá ít
             for idx, c in enumerate(sorted_clusters):
                 label_map[c] = f"Nhóm {idx + 1}"
 
@@ -323,7 +341,12 @@ def analyze_reviews():
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
         payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
         
-        response = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload)
+        response = requests.post(
+            url, 
+            headers={'Content-Type': 'application/json'}, 
+            json=payload,
+            timeout=18 
+        )
         result = response.json()
         
         if "candidates" not in result:
@@ -523,27 +546,23 @@ def cart_insights():
             if total_interactions == 0:
                 continue
 
-            # Tính tỷ lệ huỷ (Abandonment Rate)
             abandon_rate = (removes / adds) * 100 if adds > 0 else 100
 
-            # Điều kiện xếp vào "Xu hướng" (Được thêm nhiều, tỷ lệ huỷ thấp)
             if adds >= 5 and abandon_rate < 30:
                 item['reason'] = f"Được thêm {adds} lần, giữ lại giỏ hàng tốt."
                 trending_products.append(item)
             
-            # Điều kiện xếp vào "Giá cao cần Flashsale" (Bị huỷ nhiều / Tỷ lệ huỷ cao)
             elif removes >= 3 and abandon_rate >= 50:
                 item['abandon_rate'] = round(abandon_rate, 1)
                 item['reason'] = f"Tỷ lệ bỏ giỏ: {round(abandon_rate, 1)}% ({removes} lần xoá). Cần giảm giá!"
                 flashsale_candidates.append(item)
 
-        # Sắp xếp theo mức độ ưu tiên
         trending_products = sorted(trending_products, key=lambda x: x['adds_count'], reverse=True)
         flashsale_candidates = sorted(flashsale_candidates, key=lambda x: x['removes_count'], reverse=True)
 
         return {
             "status": "success",
-            "trending": trending_products[:10], # Lấy top 10
+            "trending": trending_products[:10], 
             "flashsale_needed": flashsale_candidates[:10]
         }
 
