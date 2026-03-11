@@ -1,6 +1,6 @@
 // frontend/components/layout/Header.tsx
 'use client';
-import React, { useState, useRef } from 'react'; // Đã bỏ useEffect vì không còn dùng
+import React, { useState, useRef } from 'react';
 import { Search, ShoppingCart, User, Camera, X, AlertCircle, LogOut, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
@@ -20,7 +20,6 @@ export default function Header() {
     const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Đã xóa state cartCount, hàm fetchCartCount và useEffect lắng nghe giỏ hàng
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -81,18 +80,9 @@ export default function Header() {
         logout();
         setShowUserMenu(false);
     };
-
-    const handleTextSearch = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchText.trim()) {
-            router.push(`/search?q=${encodeURIComponent(searchText.trim())}`);
-            setShowDropdown(false);
-        }
-    };
     const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault(); // Ngăn chặn load lại trang mặc định của form
+        e.preventDefault();
         if (searchQuery.trim()) {
-            // Chuyển hướng sang trang search kèm theo query string
             router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
         }
     };
@@ -104,25 +94,38 @@ export default function Header() {
                 <Link href="/" className="text-xl font-bold text-blue-600 shrink-0">FASHION AI</Link>
 
                 <div className="flex-1 max-w-2xl mx-8">
-                    {/* ✅ Đổi div bọc ngoài thành form để hỗ trợ phím Enter */}
                     <form onSubmit={handleSearch} className="relative group">
                         <input
                             type="text"
                             placeholder="Tìm kiếm sản phẩm, xu hướng..."
-                            value={searchQuery} // ✅ Gắn state
-                            onChange={(e) => setSearchQuery(e.target.value)} // ✅ Cập nhật state khi gõ
-                            className="w-full px-4 py-2.5 pl-11 bg-gray-100/80 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 outline-none"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full px-4 py-2.5 pl-11 pr-12 bg-gray-100/80 border-transparent rounded-full text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 outline-none"
                         />
-                        {/* ✅ Đổi icon thành button type="submit" */}
                         <button
                             type="submit"
-                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors"
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors"
                         >
                             <Search size={18} />
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors"
+                            title="Tìm kiếm bằng hình ảnh"
+                        >
+                            <Camera size={18} />
+                        </button>
+
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            ref={fileInputRef}
+                            onChange={handleImageUpload}
+                        />
                     </form>
 
-                    {/* Dropdown Visual Search */}
                     {showDropdown && (
                         <div className="absolute top-full mt-2 w-full left-0">
                             <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 relative">
@@ -149,7 +152,7 @@ export default function Header() {
                                 {!loading && aiResults.length > 0 && (
                                     <div className="grid grid-cols-4 gap-3">
                                         {aiResults.map(prod => (
-                                            <Link key={prod.id} href={`/products/${prod.id}`} onClick={handleClose} className="group cursor-pointer">
+                                            <Link key={prod.id} href={`/product/${prod.id}`} onClick={handleClose} className="group cursor-pointer">
                                                 <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-1">
                                                     {prod.image
                                                         ? <img src={prod.image} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />

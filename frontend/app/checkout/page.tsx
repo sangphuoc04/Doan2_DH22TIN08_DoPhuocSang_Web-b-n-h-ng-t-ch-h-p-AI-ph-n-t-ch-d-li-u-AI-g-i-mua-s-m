@@ -57,12 +57,10 @@ export default function CheckoutPage() {
 
             // 3. XỬ LÝ ĐIỀU HƯỚNG ZALOPAY
             if (formData.paymentMethod === 'ZALOPAY' && data.paymentUrl) {
-                // Nếu Backend trả về paymentUrl của ZaloPay -> Chuyển hướng người dùng qua ZaloPay
                 window.location.href = data.paymentUrl;
             } else {
-                // Nếu là COD -> Đặt hàng thành công, chuyển về trang chủ
                 alert("Đặt hàng thành công! Cảm ơn bạn đã mua sắm.");
-                router.push('/'); // Hoặc bạn có thể tạo một trang /checkout/success để chuyển tới
+                router.push('/checkout/success');
             }
 
         } catch (error: any) {

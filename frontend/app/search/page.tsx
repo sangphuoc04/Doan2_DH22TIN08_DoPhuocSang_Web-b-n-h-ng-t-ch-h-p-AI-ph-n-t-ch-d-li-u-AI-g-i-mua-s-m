@@ -33,7 +33,7 @@ export default function SearchPage() {
             ) : products.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                     {products.map(prod => (
-                        <Link key={prod.id} href={`/products/${prod.id}`} className="group block border rounded-xl overflow-hidden hover:shadow-lg transition">
+                        <Link key={prod.id} href={`/product/${prod.id}`} className="group block border rounded-xl overflow-hidden hover:shadow-lg transition">
                             <div className="aspect-square bg-gray-100">
                                 {prod.image ? (
                                     <img src={prod.image} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />

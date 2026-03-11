@@ -37,10 +37,9 @@ export class ProductsService {
 
 
 
-  // backend/src/products/products.service.ts
   async findOne(id: number) {
-    return prisma.product.findUnique({  // Dùng `prisma` thay vì `this.prisma`
-      where: { id: Number(id) }, // Đảm bảo id được chuyển thành dạng số
+    return prisma.product.findUnique({
+      where: { id: Number(id) },
       include: {
         reviews: {
           include: {
@@ -63,7 +62,7 @@ export class ProductsService {
     return prisma.review.create({
       data: {
         rating,
-        content, // Lúc này Frontend và Database đều dùng chung chữ 'content'
+        content,
         productId,
         userId,
       },
@@ -100,12 +99,19 @@ export class ProductsService {
   }
 
   async searchProducts(keyword: string) {
+    if (!keyword || keyword.trim() === '') return [];
+    const words = keyword.trim().split(/\s+/);
+
+    const searchConditions = words.map((word) => ({
+      OR: [
+        { name: { contains: word } },
+        { description: { contains: word } },
+      ],
+    }));
+
     return prisma.product.findMany({
       where: {
-        OR: [
-          { name: { contains: keyword } }, // Tìm trong tên
-          { description: { contains: keyword } }, // Tìm trong mô tả
-        ],
+        AND: searchConditions,
       },
       orderBy: { id: 'desc' },
     });
