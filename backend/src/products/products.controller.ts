@@ -57,11 +57,10 @@ export class ProductsController {
   @Post(':id/reviews')
   async addReview(
     @Param('id') productId: string,
-    @Body() body: { rating: number; content: string }, // Lấy 'content' từ Frontend gửi lên
+    @Body() body: { rating: number; content: string },
     @Req() req: any
   ) {
     const userId = req.user.sub;
-    // Truyền body.content xuống service
     return this.productsService.addReview(+productId, userId, body.rating, body.content);
   }
 }
