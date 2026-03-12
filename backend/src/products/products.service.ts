@@ -19,7 +19,6 @@ export class ProductsService {
     });
   }
 
-
   async getCategories() {
     const categories = await prisma.product.findMany({
       select: { category: true },
@@ -34,8 +33,6 @@ export class ProductsService {
       orderBy: { id: 'desc' },
     });
   }
-
-
 
   async findOne(id: number) {
     return prisma.product.findUnique({

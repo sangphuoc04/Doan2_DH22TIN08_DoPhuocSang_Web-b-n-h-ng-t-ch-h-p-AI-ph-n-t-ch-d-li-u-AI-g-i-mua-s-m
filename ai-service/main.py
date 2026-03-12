@@ -7,6 +7,8 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import mysql.connector
 from typing import List, Optional
+import chromadb
+from sentence_transformers import SentenceTransformer
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
@@ -16,16 +18,22 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from datetime import datetime
 import json
-#uvicorn main:app --reload
-# === [BẮT ĐẦU THÊM MỚI 1] IMPORT THƯ VIỆN CHO FEATURE 3 (K-MEANS) ===
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-# === [KẾT THÚC THÊM MỚI 1] ===
 
 import os
 from dotenv import load_dotenv
 load_dotenv() 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            database="shop_ai_db" 
+        )
+embedding_model = SentenceTransformer('keepitreal/vietnamese-sbert')
+chroma_client = chromadb.PersistentClient(path="./chroma_data")
+product_collection = chroma_client.get_or_create_collection(name="fashion_products")
 
 if not GOOGLE_API_KEY:
     raise ValueError("LỖI: Chưa tìm thấy GOOGLE_API_KEY trong file .env")
@@ -33,16 +41,20 @@ if not GOOGLE_API_KEY:
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Cho phép mọi domain gọi đến (Next.js localhost:3000)
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],  # Cho phép mọi method (GET, POST, PUT, DELETE...)
+    allow_methods=["*"],  
     allow_headers=["*"],
 )
 
-# --- HÀM LẤY DỮ LIỆU TỪ MYSQL ---
 def get_products_context():
     try:
-        conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="", # Điền mật khẩu MySQL của bạn nếu có (thường XAMPP là rỗng)
+            database="shop_ai_db" # Đảm bảo đúng tên Database của bạn
+        )
         cursor = conn.cursor(dictionary=True)
         
         # Bổ sung lấy id và image từ Database
@@ -62,26 +74,122 @@ def get_products_context():
 class ChatRequest(BaseModel):
     question: str
 class HistoryItem(BaseModel):
-    role: str    # 'user' hoặc 'model'
+    role: str    
     content: str
 class ChatRequest(BaseModel):
     question: str
     history: Optional[List[HistoryItem]] = []
+
+#test rag 
+@app.get("/api/ai/sync-rag")
+async def sync_mysql_to_chroma():
+    """API này dùng để đồng bộ dữ liệu từ bảng Product trong MySQL sang ChromaDB"""
+    try:
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="", # Điền pass nếu có
+            database="shop_ai_db"
+        )
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, name, price, description, image FROM Product")
+        products = cursor.fetchall()
+        
+        if not products:
+            return {"message": "Không có sản phẩm nào để đồng bộ."}
+
+        ids = []
+        documents = []
+        metadatas = []
+
+        # 2. Chuẩn bị dữ liệu để Vector hóa
+        for p in products:
+            doc_text = f"Tên sản phẩm: {p['name']}. Mô tả: {p['description']}"
+            
+            ids.append(str(p['id']))
+            documents.append(doc_text)
+            metadatas.append({
+                "name": p['name'],
+                "price": str(p['price']),
+                "image": p['image'] if p['image'] else "" 
+            })
+            
+        # 3. Biến văn bản thành Vector và lưu vào DB
+        print("Đang tạo Vector cho sản phẩm...")
+        embeddings = embedding_model.encode(documents).tolist()
+        
+        # Xóa dữ liệu cũ (nếu có) để cập nhật mới
+        if product_collection.count() > 0:
+            existing_ids = product_collection.get()['ids']
+            product_collection.delete(ids=existing_ids)
+            
+        # Nạp dữ liệu mới vào ChromaDB
+        product_collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=metadatas
+        )
+        
+        cursor.close()
+        conn.close()
+        return {"status": "success", "message": f"Đã đồng bộ thành công {len(products)} sản phẩm vào Vector DB!"}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+def get_top_5_products_from_rag(user_query: str):
+    """Tìm 5 sản phẩm giống với ý định câu hỏi của user nhất"""
+    # Nếu ChromaDB trống, không cần tìm
+    if product_collection.count() == 0:
+        return "Hiện chưa có dữ liệu sản phẩm trong Vector DB."
+    # 1. Biến câu hỏi của user thành Vector
+    query_vector = embedding_model.encode([user_query]).tolist()
+    # 2. Dò tìm trong ChromaDB
+    results = product_collection.query(
+        query_embeddings=query_vector,
+        n_results=5 # Bắt ChromaDB trả về đúng 5 kết quả gần nhất
+    )
+    # 3. Ghép kết quả thành một đoạn văn bản (Context) để mớm cho Gemini
+    context_text = "DANH SÁCH SẢN PHẨM PHÙ HỢP TRONG KHO (Chỉ tư vấn dựa trên danh sách này):\n\n"
+    # ChromaDB trả về list of lists, ta duyệt qua list đầu tiên
+    for i in range(len(results['ids'][0])):
+        p_id = results['ids'][0][i]
+        meta = results['metadatas'][0][i]
+        
+        context_text += f"- Tên sản phẩm: {meta['name']} (ID: {p_id})\n"
+        context_text += f"  Giá: {meta['price']} VNĐ\n"
+        context_text += f"  Link ảnh: {meta['image']}\n"
+        context_text += "----------\n"
+        
+    return context_text
+
 # --- API 1: CHATBOT ---
 @app.post("/chatbot")
-async def chat_endpoint(req: ChatRequest):
-    context = get_products_context()
-    system_prompt = f"""Bạn là nhân viên tư vấn thời trang thân thiện của Fashion AI Shop.
-Dựa trên danh sách sản phẩm sau để tư vấn khách hàng, trả lời ngắn gọn và tự nhiên:
+def chat_endpoint(req: ChatRequest):
+    context = get_top_5_products_from_rag(req.question)
+    
+    system_prompt = f"""Bạn là chuyên gia tư vấn thời trang (Stylist) của Fashion AI Shop.
+Dưới đây là danh sách các sản phẩm hệ thống tìm được dựa trên câu hỏi của khách:
 
 {context}
-QUAN TRỌNG: Khi bạn gợi ý một sản phẩm cụ thể cho khách, BẮT BUỘC phải kèm theo hình ảnh sản phẩm đó bằng cú pháp Markdown và link dẫn đến trang chi tiết.
-Ví dụ định dạng bạn phải trả về:
-"Tôi thấy chiếc áo này rất hợp với bạn:
-![Tên sản phẩm](Đường_dẫn_Ảnh_Của_Sản_Phẩm)
-[👉 Nhấn vào đây để xem chi tiết](/product/ID_Sản_phẩm)"
 
-Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy thành thật nói không có hàng.
+HƯỚNG DẪN TƯ DUY VÀ TRẢ LỜI (BẮT BUỘC TUÂN THỦ):
+
+1. NẾU KHÁCH GIAO TIẾP THÔNG THƯỜNG (vd: "chào shop", "bạn ơi"): 
+   -> Hãy chào hỏi thân thiện, tự nhiên và hỏi nhu cầu của họ. Bỏ qua danh sách sản phẩm.
+
+2. TƯ DUY SUY LUẬN (RẤT QUAN TRỌNG): Khách hàng thường hỏi theo nhu cầu trừu tượng (ví dụ: "đồ mùa hè", "đồ đi biển", "mặc cho gầy đi"). 
+   -> TUYỆT ĐỐI KHÔNG tìm kiếm từ khóa máy móc. 
+   -> Hãy dùng kiến thức thời trang của bạn xem xét danh sách sản phẩm ở trên. Nếu có sản phẩm nào CÓ THỂ PHÙ HỢP với nhu cầu đó (ví dụ: áo thun, váy mỏng thì hợp mùa hè; màu đen thì hợp cho người mập...), hãy mạnh dạn gợi ý!
+
+3. CÁCH GỢI Ý: 
+   -> Giải thích ngắn gọn lý do tại sao nó hợp với nhu cầu của khách (ví dụ: "Mùa hè mặc mẫu này rất thoáng mát...").
+   -> BẮT BUỘC chèn ảnh sản phẩm bằng Markdown: ![Tên sp](Link_ảnh) [👉 Xem chi tiết](/product/ID_Sản_phẩm)
+   -> Chỉ được gợi ý sản phẩm có trong danh sách trên. Không tự bịa sản phẩm ngoài.
+
+4. KHI NÀO CẦN XIN LỖI?
+   -> CHỈ xin lỗi và nói "shop chưa có dữ liệu/sản phẩm" KHI VÀ CHỈ KHI danh sách trên hoàn toàn trống, HOẶC cả 5 sản phẩm trên không có bất kỳ cách nào liên hệ được với nhu cầu của khách (ví dụ: khách đòi mua váy mà danh sách toàn quần nam).
 """
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}"
@@ -94,7 +202,7 @@ Lưu ý: Nếu khách hỏi về sản phẩm không có trong danh sách, hãy 
         })
         contents.append({
             "role": "model",
-            "parts": [{"text": "Tôi đã hiểu. Tôi sẵn sàng tư vấn thời trang cho khách hàng!"}]
+            "parts": [{"text": "Tôi đã hiểu. Tôi sẵn sàng tư vấn thời trang dựa trên danh sách hệ thống cung cấp!"}]
         })
 
         for item in (req.history or [])[-6:]:
@@ -182,7 +290,6 @@ def predict_revenue():
                 "prediction": None
             })
 
-        # Thêm điểm dự báo tháng tiếp theo
         last_date = monthly_revenue.iloc[-1]['Date']
         next_date = last_date + pd.DateOffset(months=1)
         chart_data.append({
@@ -190,7 +297,6 @@ def predict_revenue():
             "revenue": None,
             "prediction": max(0, round(next_month_revenue))    
         })
-
 
         last_revenue = float(y.iloc[-1])
         growth_rate = ((next_month_revenue - last_revenue) / last_revenue) * 100 if last_revenue > 0 else 0
@@ -239,7 +345,7 @@ def predict_revenue():
     finally:
         if conn and conn.is_connected():
             conn.close()
-# === [BẮT ĐẦU THÊM MỚI 2] API 3: PHÂN KHÚC KHÁCH HÀNG BẰNG K-MEANS ===
+# API 3: PHÂN KHÚC KHÁCH HÀNG BẰNG K-MEANS 
 @app.get("/customer-segments")
 def customer_segments():
     try:
@@ -306,8 +412,7 @@ def customer_segments():
     except Exception as e:
         print(f"LỖI PHÂN KHÚC: {e}")
         return {"status": "error", "error": str(e)}
-# === [KẾT THÚC THÊM MỚI 2] ===
-# === [BẮT ĐẦU THÊM MỚI 3] API 4: PHÂN TÍCH CẢM XÚC ĐÁNH GIÁ (SENTIMENT ANALYSIS) ===
+# === API 4: PHÂN TÍCH CẢM XÚC ĐÁNH GIÁ ===
 @app.get("/analyze-reviews")
 def analyze_reviews():
     try:
@@ -405,9 +510,7 @@ def analyze_reviews():
     except Exception as e:
         print(f"LỖI PHÂN TÍCH CẢM XÚC: {e}")
         return {"status": "error", "error": str(e)}
-# === [KẾT THÚC THÊM MỚI 3] ===
-
-# === [BẮT ĐẦU THÊM MỚI 4] API 5: VISUAL SEARCH (TÌM KIẾM BẰNG HÌNH ẢNH) ===
+# === API 5: VISUAL SEARCH (TÌM KIẾM BẰNG HÌNH ẢNH) ===
 class ImageSearchRequest(BaseModel):
     image_base64: str
 
@@ -510,16 +613,13 @@ def visual_search(req: ImageSearchRequest):
     except Exception as e:
         print(f"LỖI VISUAL SEARCH: {e}")
         return {"status": "error", "message": str(e), "data": []}
-
-# === [KẾT THÚC THÊM MỚI 4] ===
-
+    
 @app.get("/cart-insights")
 def cart_insights():
     try:
         conn = mysql.connector.connect(host="localhost", user="root", password="", database="shop_ai_db")
         cursor = conn.cursor(dictionary=True)
         
-        # Truy vấn đếm số lượng ADD_TO_CART và REMOVE_FROM_CART của từng sản phẩm
         cursor.execute("""
             SELECT 
                 p.id, 
@@ -569,4 +669,3 @@ def cart_insights():
     except Exception as e:
         print(f"LỖI PHÂN TÍCH GIỎ HÀNG: {e}")
         return {"status": "error", "message": str(e), "trending": [], "flashsale_needed": []}
-# === [KẾT THÚC THÊM MỚI 5] ===
