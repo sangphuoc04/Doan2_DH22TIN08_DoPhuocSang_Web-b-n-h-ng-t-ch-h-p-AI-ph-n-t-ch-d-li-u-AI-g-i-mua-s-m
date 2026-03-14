@@ -2,3 +2,5 @@
 
 #uvicorn main:app --reload
 #123
+#admin account: admin@gmail
+#        pass: 123456
